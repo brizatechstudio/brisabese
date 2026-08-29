@@ -68,7 +68,7 @@
     "express": "^4.21.2",
     "express-async-errors": "^3.1.1",
     "lucide-react": "^0.546.0",
-    "motion": "^12.23.24",
+    "motion": "^13.1.1",
     "nodemailer": "^9.0.4",
     "pg": "^8.22.0",
     "pg-logical-replication": "^2.5.0",
