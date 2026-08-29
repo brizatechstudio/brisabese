@@ -1,4 +1,4 @@
-Contact: https://github.com/desenvolvimentogidital-cyber/brisabase/security/advisories/new
+Contact: https://github.com/brizatechstudio/brisabese/security/advisories/new
 Expires: 2027-08-28T23:59:59Z
 Preferred-Languages: pt-BR, en
-Policy: https://github.com/desenvolvimentogidital-cyber/brisabase/security/policy
+Policy: https://github.com/brizatechstudio/brisabese/security/policy

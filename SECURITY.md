@@ -2,7 +2,7 @@
 
 ## Como relatar uma vulnerabilidade
 
-Use exclusivamente o formulário privado de [Security Advisories do BrisaBase](https://github.com/desenvolvimentogidital-cyber/brisabase/security/advisories/new). Não abra uma issue pública com detalhes exploráveis, credenciais, dados pessoais ou dados de clientes.
+Use exclusivamente o formulário privado de [Security Advisories do BrisaBase](https://github.com/brizatechstudio/brisabese/security/advisories/new). Não abra uma issue pública com detalhes exploráveis, credenciais, dados pessoais ou dados de clientes.
 
 Inclua, quando possível:
 

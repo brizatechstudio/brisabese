@@ -12,7 +12,7 @@
 - imagens de produção imutáveis e validação de configuração.
 
 ## Relato de vulnerabilidade
-Use o [Security Advisory privado](https://github.com/desenvolvimentogidital-cyber/brisabase/security/advisories/new). A política completa está em `SECURITY.md` e o build publica `public/.well-known/security.txt`. Não divulgue detalhes exploráveis publicamente antes de haver mitigação coordenada.
+Use o [Security Advisory privado](https://github.com/brizatechstudio/brisabese/security/advisories/new). A política completa está em `SECURITY.md` e o build publica `public/.well-known/security.txt`. Não divulgue detalhes exploráveis publicamente antes de haver mitigação coordenada.
 
 ## Compliance
 O Compliance Center produz evidências técnicas. Ele **não representa certificação jurídica ou auditoria SOC 2/GDPR** por si só.
