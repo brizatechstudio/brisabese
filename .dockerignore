@@ -1,0 +1,21 @@
+# Repository and CI metadata
+.git
+.github
+
+# Dependencies and generated artifacts
+node_modules
+build
+dist
+coverage
+artifacts
+test-results
+playwright-report
+
+# Local configuration, credentials, and logs
+.env*
+*.log
+brisabase.targets.json
+brisabase-production-secrets.env
+
+# Host-specific files
+.DS_Store
