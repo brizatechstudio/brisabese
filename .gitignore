@@ -1,0 +1,16 @@
+node_modules/
+build/
+dist/
+coverage/
+artifacts/
+test-results/
+playwright-report/
+.DS_Store
+*.log
+.env*
+!.env.example
+!.env.production.example
+!.env.homologation.example
+!.env.hobby.example
+!.env.enterprise.example
+brisabase.targets.json

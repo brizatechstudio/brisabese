@@ -1,0 +1,26 @@
+const fs = require('fs');
+const path = require('path');
+const { isSemVerAtLeast } = require('./semver.cjs');
+const root = path.resolve(__dirname, '..');
+const read = (p) => fs.readFileSync(path.join(root,p),'utf8');
+const must = (p, needles) => { const s=read(p); for(const n of needles){ if(!s.includes(n)) throw new Error(`${p} missing: ${n}`); } };
+const exists = (p) => { if(!fs.existsSync(path.join(root,p))) throw new Error(`Missing ${p}`); };
+
+exists('server/db/migrations/019_storage_realtime_webhooks_phase4.sql');
+exists('PHASE4_COMPLETION.md');
+const pkg=JSON.parse(read('package.json')); const sdk=JSON.parse(read('developer/sdk/package.json')); if(!isSemVerAtLeast(pkg.version,'0.6.0')) throw new Error('Platform version must be valid SemVer and Phase 4 (0.6.0) or newer.'); if(sdk.version!==pkg.version) throw new Error('SDK version must match platform.'); if(!read('developer/cli/brisabase.mjs').includes(`const VERSION = '${pkg.version}'`)) throw new Error('CLI version must match platform.');
+exists('server/webhooks/webhookEngine.ts');
+exists('server/routes/webhooks.ts');
+must('server/middleware/auth.ts', ['database', 'realtime', 'webhooks', 'backups']);
+must('server/webhooks/webhookEngine.ts', ['x-brisabase-signature','dead_letter','validateTarget','validateCustomHeaders','Recovered after an interrupted worker execution','FOR UPDATE OF d SKIP LOCKED','Automatically disabled after repeated delivery failures']);
+must('server/routes/webhooks.ts', ['/api/webhooks/deliveries/:id/replay','/api/webhooks/:id/rotate-secret']);
+must('server/storage/realStorageEngine.ts', ['normalizeCorsRules','normalizeLifecycleRules','initiateMultipart','completeMultipart','transformImage','applyLifecycle','cors_config,lifecycle_rules']);
+must('server/routes/realStorage.ts', ['/api/storage/signed-upload-url','/api/storage/buckets/:bucket/copy','/api/storage/buckets/:bucket/move','/api/storage/buckets/:bucket/multipart','/transform/*','storage.object.restored']);
+must('server/realtime/rateLimiter.ts', ['checkMessageDistributed','checkBroadcastDistributed']);
+must('developer/sdk/client.ts', ['reconnect','heartbeat']);
+must('src/brisabase/pages/ApisPage.tsx', ['Histórico de entregas','Replay','Rotacionar segredo']);
+must('src/brisabase/pages/StoragePage.tsx', ['Configurar Bucket','Origens CORS','Expirar objetos após dias']);
+must('src/brisabase/services/storageService.ts', ['/multipart','partSize = 8 * 1024 * 1024','updateBucket']);
+must('server/middleware/cors.ts', ['bucket-level CORS','bucketCorsRoute']);
+must('server/routes/realAuth.ts', ["'auth.user.created'","'auth.user.deleted'"]);
+console.log('Phase 4 verification: PASS');

@@ -1,0 +1,33 @@
+ARG NODE_BUILD_IMAGE=node:22.18.0-bookworm-slim
+ARG NODE_RUNTIME_IMAGE=node:22.18.0-bookworm-slim
+
+FROM ${NODE_BUILD_IMAGE} AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM ${NODE_RUNTIME_IMAGE} AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3100
+
+# The executor intentionally receives no database, Redis, S3, JWT, SMTP, admin,
+# or authentication-encryption credentials. Its only deployment secret is the
+# executor authentication token shared with the BrisaBase API.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
+# The executor transpiles user TypeScript at invocation time. esbuild is locked
+# as a build dependency for the repository, so copy only the resolved compiler
+# package and platform binary into this minimal runtime instead of installing all
+# development dependencies in the isolated executor image.
+COPY --from=build /app/node_modules/esbuild ./node_modules/esbuild
+COPY --from=build /app/node_modules/@esbuild ./node_modules/@esbuild
+COPY --from=build /app/dist/server/functions-executor.cjs ./dist/server/functions-executor.cjs
+COPY --from=build /app/dist/server/functions-executor-child.cjs ./dist/server/functions-executor-child.cjs
+
+EXPOSE 3100
+HEALTHCHECK --interval=10s --timeout=5s --retries=12 CMD node -e "fetch('http://127.0.0.1:' + (process.env.PORT || 3100) + '/healthz').then((r)=>process.exit(r.status===200?0:1)).catch(()=>process.exit(1))"
+USER node
+CMD ["node", "dist/server/functions-executor.cjs"]

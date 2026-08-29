@@ -1,0 +1,62 @@
+name: BrisaBase Production Gate
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: brisabase-production-gate-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout candidate commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Configure Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify source integrity manifest
+        run: npm run release:manifest:verify
+
+      - name: Generate CycloneDX SBOM
+        run: node scripts/generate-sbom.cjs --output artifacts/brisabase.cdx.json
+
+      - name: Record candidate identity
+        run: npm run release:evidence
+
+      - name: Verify cumulative phase contracts
+        run: npm run build:sdk && npm run phase8:verify
+
+      - name: Run complete unit, Docker, restore, load and browser certification
+        run: npm run release:validate:docker
+
+      - name: Package CLI and SDK candidates
+        run: npm run release:package
+
+      - name: Upload immutable release evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: brisabase-release-evidence-${{ github.sha }}
+          path: |
+            artifacts/**
+            SOURCE_SHA256SUMS.txt
+            test-results/**
+            playwright-report/**
+          if-no-files-found: error
+          retention-days: 90

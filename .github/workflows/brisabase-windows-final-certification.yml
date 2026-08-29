@@ -1,0 +1,95 @@
+name: BrisaBase Windows Final Certification
+
+on:
+  push:
+    branches:
+      - fix/final-release-gates
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout certification commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Configure Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: TypeScript gate
+        run: npm run typecheck
+
+      - name: Build SDK verification artifact
+        run: npm run build:sdk
+
+      - name: Phase 8 verification chain
+        run: npm run phase8:verify
+
+      - name: CI security, tests and build
+        run: npm run test:ci
+
+  certify-windows:
+    needs: preflight
+    runs-on: self-hosted
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Checkout certification commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Configure Node.js 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Runner diagnostics
+        run: |
+          Write-Host "Runner: $env:RUNNER_NAME"
+          Write-Host "OS: $env:RUNNER_OS"
+          Write-Host "Architecture: $env:RUNNER_ARCH"
+          node --version
+          npm --version
+          git --version
+          docker --version
+          docker compose version
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: TypeScript gate
+        run: npm run typecheck
+
+      - name: Build SDK verification artifact
+        run: npm run build:sdk
+
+      - name: Phase 8 verification chain
+        run: npm run phase8:verify
+
+      - name: CI security, tests and build
+        run: npm run test:ci
+
+      - name: Docker availability
+        run: |
+          docker version
+          docker info
+
+      - name: Docker, real integration and browser release certification
+        run: npm run release:validate:docker

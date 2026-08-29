@@ -1,0 +1,23 @@
+name: brisabase-hobby
+
+# Hobby is an override for docker-compose.local.yml. It keeps every service on
+# loopback and marks the application profile explicitly without changing the
+# real local integration topology.
+services:
+  brisabase-migrate:
+    environment:
+      BRISABASE_DEPLOYMENT_PROFILE: hobby
+      BRISABASE_DEPLOYMENT_MODE: self-hosted
+      BRISABASE_PRODUCTION_TIER: single-host
+
+  brisabase-seed:
+    environment:
+      BRISABASE_DEPLOYMENT_PROFILE: hobby
+      BRISABASE_DEPLOYMENT_MODE: self-hosted
+      BRISABASE_PRODUCTION_TIER: single-host
+
+  brisabase:
+    environment:
+      BRISABASE_DEPLOYMENT_PROFILE: hobby
+      BRISABASE_DEPLOYMENT_MODE: self-hosted
+      BRISABASE_PRODUCTION_TIER: single-host

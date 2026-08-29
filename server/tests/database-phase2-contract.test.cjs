@@ -1,0 +1,14 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const root = path.resolve(__dirname, '../..');
+const read = (file) => fs.readFileSync(path.join(root,file),'utf8');
+assert.match(read('server/db/scopedSql.ts'), /Use the dedicated EXPLAIN/);
+assert.match(read('server/routes/realDatabase.ts'), /\/api\/database\/sql\/metrics/);
+assert.match(read('server/db/controlRepository.ts'), /percentile_cont\(0\.95\)/);
+assert.match(read('server/db/databasePhase2.ts'), /relationships\.added/);
+assert.match(read('server/db/databasePhase2.ts'), /compareNamed\('materializedViews'/);
+assert.match(read('src/brisabase/components/database/TableSpreadsheet.tsx'), /primaryKeys\.length === 1/);
+assert.match(read('src/brisabase/components/database/TableSpreadsheet.tsx'), />Unique</);
+assert.match(read('src/brisabase/components/database/SqlEditorView.tsx'), /p95ExecutionTimeMs/);
+console.log('[database-phase2-contract] PASS');

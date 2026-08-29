@@ -1,0 +1,62 @@
+name: Relatório de bug
+description: Informe uma falha reproduzível do BrisaBase sem incluir segredos ou dados pessoais.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Obrigado pelo relato. Para vulnerabilidades, use o Security Advisory privado. Remova tokens, senhas, chaves, e-mails e dados de clientes de logs e imagens.
+  - type: input
+    id: version
+    attributes:
+      label: Versão ou commit
+      description: Informe a tag ou o SHA exato em que o problema ocorreu.
+      placeholder: v1.0.1-beta.1 ou a2b5430
+    validations:
+      required: true
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Perfil de implantação
+      options:
+        - Hobby / Local
+        - Self-Hosted
+        - Enterprise
+        - Não se aplica
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Passos para reproduzir
+      placeholder: Descreva o menor fluxo que reproduz o problema.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Resultado esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Resultado observado
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências sanitizadas
+      description: Cole apenas logs ou imagens sem segredos, dados pessoais ou dados de clientes.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Verificações
+      options:
+        - label: Removi segredos e dados pessoais das evidências.
+          required: true
+        - label: Confirmei que este relato não descreve uma vulnerabilidade explorável.
+          required: true

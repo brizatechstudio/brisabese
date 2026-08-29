@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-main: #020617;
+    --surface-1: #07111f;
+    --surface-2: #0b1628;
+    --surface-3: #112240;
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-hover: rgba(255, 255, 255, 0.16);
+    --primary-blue: #1677ff;
+    --accent-cyan: #12d9ff;
+    --accent-purple: #7c3aed;
+    --accent-green: #10b981;
+    --accent-orange: #f59e0b;
+    --text-primary: #f8fafc;
+    --text-muted: #94a3b8;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  #root {
+    min-width: 0;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+/* Charts must never establish a wider intrinsic width than their panel. */
+.recharts-responsive-container,
+.recharts-wrapper,
+.recharts-surface {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Glow effects & Glassmorphism */
+.glow-blue {
+  box-shadow: 0 0 25px -5px rgba(22, 119, 255, 0.35);
+}
+
+.glow-cyan {
+  box-shadow: 0 0 25px -5px rgba(18, 217, 255, 0.35);
+}
+
+.glow-card {
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+.glass-panel {
+  background: rgba(7, 17, 31, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* BrisaBase visual reference refinements */
+body { min-width: 320px; }
+.dashboard-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+@media (min-width:1536px){ .dashboard-grid{ grid-template-columns:minmax(0,1fr) 300px; } }
+.hero-panel::after{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(0,146,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(0,146,255,.045) 1px,transparent 1px);background-size:34px 34px;mask-image:linear-gradient(90deg,transparent,black 55%,black);pointer-events:none}
+.auth-bg{background:radial-gradient(circle at 82% 18%,rgba(21,91,205,.34),transparent 29%),radial-gradient(circle at 13% 78%,rgba(0,102,255,.20),transparent 30%),linear-gradient(135deg,#020713 0%,#07152d 49%,#020713 100%)}
+.auth-bg::after{content:"";position:absolute;left:-13%;bottom:-23%;width:70%;height:55%;border-radius:50%;border-top:1px solid rgba(0,128,255,.55);box-shadow:0 -10px 35px rgba(0,110,255,.24);transform:rotate(-10deg)}
+.h-13{height:3.25rem}
+@media (max-width:1023px){.auth-shell{padding-bottom:70px}.auth-card{margin-top:0}}
+
+/* Compatibility skin for proven BrisaBase control-plane views now hosted by BrisaBase. */
+.bb-gradient-text {
+  background: linear-gradient(90deg, #087cff, #13ddea);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.bb-primary-action {
+  background-image: linear-gradient(90deg, #087cff, #13ddea);
+  box-shadow: 0 12px 28px -14px rgba(8, 124, 255, .75);
+}
+.bb-primary-action:hover { filter: brightness(1.08); transform: translateY(-1px); }
+.bb-brand-mark {
+  position: relative; display: grid; place-items: center; overflow: hidden;
+  border: 1px solid rgba(19, 221, 234, .45);
+  background: linear-gradient(135deg, #087cff, #13ddea);
+  box-shadow: 0 12px 26px -15px rgba(19, 221, 234, .8);
+}
+.bb-panel {
+  border: 1px solid rgba(71, 145, 255, .18);
+  background: linear-gradient(145deg, rgba(8, 21, 43, .95), rgba(3, 11, 28, .95));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 20px 46px -38px rgba(0,0,0,.95);
+}
+
+/* Migrated control-plane purple utilities are state accents; keep labels readable. */
+[class*="text-purple-"] {
+  color: #ffffff !important;
+}

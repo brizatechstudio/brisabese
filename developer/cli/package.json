@@ -1,0 +1,18 @@
+{
+  "name": "@brisabase/cli",
+  "version": "1.0.1-beta.1",
+  "description": "Official command-line interface for BrisaBase",
+  "license": "UNLICENSED",
+  "type": "module",
+  "files": [
+    "brisabase-entry.mjs",
+    "brisabase.mjs",
+    "README.md"
+  ],
+  "bin": {
+    "brisabase": "./brisabase-entry.mjs"
+  },
+  "engines": {
+    "node": ">=22 <23"
+  }
+}

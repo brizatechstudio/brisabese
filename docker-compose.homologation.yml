@@ -1,0 +1,30 @@
+services:
+  functions-executor:
+    image: brisabase-functions:${BRISABASE_RELEASE:-contract}
+    build:
+      context: .
+      dockerfile: Dockerfile.functions
+      args:
+        NODE_BUILD_IMAGE: ${NODE_IMAGE}
+        NODE_RUNTIME_IMAGE: ${NODE_IMAGE}
+
+  mailpit:
+    image: ${MAILPIT_IMAGE:-axllent/mailpit:v1.26}
+    restart: unless-stopped
+    networks: [backend]
+
+  brisabase:
+    ports:
+      - "127.0.0.1:${BRISABASE_HOMOLOGATION_PORT:-3100}:3000"
+    environment:
+      SMTP_ENABLED: "true"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_SECURE: "false"
+      SMTP_FROM: no-reply@brisabase.local
+    depends_on:
+      mailpit:
+        condition: service_started
+
+  reverse-proxy:
+    profiles: ["proxy"]

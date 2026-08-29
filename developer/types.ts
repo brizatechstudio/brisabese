@@ -1,0 +1,13 @@
+export type SdkTarget = 'typescript' | 'javascript' | 'node' | 'react' | 'react-native' | 'next' | 'vue' | 'nuxt' | 'angular' | 'svelte' | 'flutter' | 'kotlin' | 'swift' | 'python' | 'go' | 'java' | 'csharp' | 'php' | 'rust';
+export type MarketplaceCategory = 'plugin' | 'template' | 'function' | 'component' | 'sdk' | 'integration' | 'theme';
+export type PluginPermission = 'database:read' | 'database:write' | 'storage:read' | 'storage:write' | 'functions:invoke' | 'realtime:publish' | 'ui:menu' | 'ui:widget' | 'cli:command' | 'network:egress';
+
+export interface DeveloperContext { organizationId: string; projectId: string; environmentId: string; userId?: string; role: string; requestId?: string; ip?: string; userAgent?: string; }
+export interface SdkArtifact { id: string; target: SdkTarget; packageName: string; version: string; language: string; maturity: 'official' | 'preview'; source: string; generatedAt: string; changelog: string; }
+export interface ProjectTemplate { id: string; name: string; framework: string; category: 'starter' | 'blog' | 'ecommerce' | 'chat' | 'dashboard' | 'crm' | 'erp' | 'education' | 'marketplace' | 'saas' | 'landing'; version: string; description: string; files: Record<string, string>; dependencies: Record<string, string>; author: string; changelog: string; }
+export interface MarketplaceItem { id: string; name: string; slug: string; category: MarketplaceCategory; version: string; author: string; description: string; dependencies: string[]; rating: number; ratingsCount: number; changelog: string; signed: boolean; createdAt: string; updatedAt: string; }
+export interface PluginManifest { id: string; name: string; version: string; author: string; permissions: PluginPermission[]; menus?: Array<{ label: string; path: string }>; pages?: string[]; hooks?: string[]; widgets?: string[]; cliCommands?: string[]; apiRoutes?: string[]; signature?: string; }
+export interface InstalledPlugin { manifest: PluginManifest; organizationId: string; projectId: string; environmentId: string; installedAt: string; installedBy: string; sandbox: { isolated: true; allowedPermissions: PluginPermission[]; }; }
+export interface DocumentationEntry { id: string; title: string; section: 'guide' | 'reference' | 'tutorial' | 'faq' | 'migration' | 'changelog'; content: string; tags: string[]; updatedAt: string; }
+export interface GenerationRequest { resource: string; target: 'typescript' | 'react' | 'python' | 'go'; fields: Array<{ name: string; type: string; required?: boolean }>; }
+export interface GeneratedCode { target: GenerationRequest['target']; files: Record<string, string>; }

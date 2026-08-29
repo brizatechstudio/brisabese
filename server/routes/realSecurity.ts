@@ -1,0 +1,14 @@
+import { Request, Response, Router } from 'express';
+import { securityEngine } from '../security/securityEngine';
+import { SecurityContext } from '../security/types';
+
+export const realSecurityRouter = Router();
+type SecRequest = Request & { user?: { id: string; role: string }; organizationId?: string; projectId?: string; environmentId?: string };
+function context(req: SecRequest): SecurityContext { if (!req.organizationId || !req.projectId || !req.environmentId) throw new Error('Authenticated security scope is required.'); let claims: Record<string, unknown> | undefined; if (typeof req.headers['x-security-claims'] === 'string') claims = JSON.parse(req.headers['x-security-claims']); return { organizationId:req.organizationId,projectId:req.projectId,environmentId:req.environmentId,userId:req.user?.id,role:req.user?.role || 'anonymous',claims,ip:req.ip,userAgent:req.headers['user-agent'],requestId:req.headers['x-request-id'] as string|undefined }; }
+function fail(res: Response,error: unknown): void { const message=error instanceof Error?error.message:'Security operation failed.';res.status(/not found/i.test(message)?404:400).json({error:{code:'SECURITY_ERROR',message}}); }
+realSecurityRouter.get('/api/security/policies',(req:SecRequest,res)=>{try{res.json(securityEngine.listPolicies(context(req),{resourceType:req.query.resourceType as any,resource:req.query.resource as string|undefined}));}catch(error){fail(res,error);}});
+realSecurityRouter.post('/api/security/policies',async(req:SecRequest,res)=>{try{const policy=securityEngine.createPolicy(context(req),req.body||{});await securityEngine.persist(policy);res.status(201).json(policy);}catch(error){fail(res,error);}});
+realSecurityRouter.patch('/api/security/policies/:id',async(req:SecRequest,res)=>{try{const policy=securityEngine.updatePolicy(context(req),req.params.id,req.body||{});await securityEngine.persist(policy);res.json(policy);}catch(error){fail(res,error);}});
+realSecurityRouter.delete('/api/security/policies/:id',async(req:SecRequest,res)=>{try{const deleted=securityEngine.deletePolicy(context(req),req.params.id);if(!deleted){res.status(404).json({error:{code:'POLICY_NOT_FOUND',message:'Policy not found.'}});return;}await securityEngine.removePersistent(req.params.id);res.status(204).end();}catch(error){fail(res,error);}});
+realSecurityRouter.post('/api/security/test-policy',(req:SecRequest,res)=>{try{res.json(securityEngine.testPolicy(context(req),req.body||{}));}catch(error){fail(res,error);}});
+realSecurityRouter.post('/api/security/simulate',(req:SecRequest,res)=>{try{const manager=context(req);const simulated={...manager,...(req.body?.context||{}),organizationId:manager.organizationId,projectId:manager.projectId,environmentId:manager.environmentId,bypassRls:false};res.json(securityEngine.simulate(manager,simulated,req.body?.input||{}));}catch(error){fail(res,error);}});

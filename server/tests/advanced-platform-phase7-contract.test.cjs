@@ -1,0 +1,44 @@
+const fs=require('fs');const path=require('path');const root=path.resolve(__dirname,'../..');const read=p=>fs.readFileSync(path.join(root,p),'utf8');const assert=(v,m)=>{if(!v)throw new Error(m);};
+const migration=read('server/db/migrations/022_advanced_platform_phase7.sql');
+for(const t of ['feature_flags','remote_config_parameters','experiments','analytics_events','app_quality_events','search_documents','ai_provider_configs','messaging_campaigns'])assert(migration.includes(`CREATE TABLE IF NOT EXISTS ${t}`),`${t} persistence missing`);
+assert(migration.includes('CHECK (rollout_basis_points BETWEEN 0 AND 10000)'), 'feature rollout must be bounded');
+assert(migration.includes('PRIMARY KEY(experiment_id, subject_id)'), 'experiment assignment must be sticky per subject');
+assert(migration.includes("CHECK (kind IN ('crash','error','anr','performance','trace'))"),'App Quality kind constraint missing');
+assert(migration.includes("USING GIN (to_tsvector('simple'"),'full-text search GIN index missing');
+const engine=read('server/platform/advancedPlatformEngine.ts');
+assert(engine.includes("createHash('sha256').update(`${salt}:${subjectId}`)"),'flag/experiment bucketing must be deterministic');
+assert(engine.includes('if(total!==10000)'), 'experiment allocation must total 10000 basis points');
+assert(engine.includes('ON CONFLICT(experiment_id,subject_id) DO NOTHING'), 'experiment assignment must be race-safe');
+assert(engine.includes('MAX_EVENT_BATCH = 100'), 'telemetry ingestion batch must be bounded');
+assert(engine.includes('MAX_ANALYTICS_QUERY_EVENTS = 50_000'), 'funnel analysis must have a hard bound');
+assert(engine.includes('embedding DOUBLE PRECISION')===false, 'engine must not construct vector schema dynamically');
+assert(engine.includes('normalizeEmbedding'), 'vector dimensions must be validated');
+assert(engine.includes('AI_PROVIDER_ALLOWED_HOSTS'), 'AI gateway needs explicit hostname allowlist');
+assert(engine.includes("url.protocol !== 'https:'"), 'AI gateway must require HTTPS');
+assert(engine.includes('privateAddress(item.address)'), 'AI gateway must reject private/reserved networks');
+assert(engine.includes("redirect:'error'"), 'AI gateway must reject redirects to prevent SSRF bypass');
+assert(engine.includes('encryptSecret(rawKey)'), 'AI provider secrets must be encrypted');
+assert(engine.includes('realStorageEngine.object'), 'App Distribution must validate Storage artifacts');
+assert(engine.includes('recipient.email_verified') && engine.includes('recipient.phone_verified'), 'campaigns must require verified contact channels');
+
+assert(migration.includes('pricing JSONB') && migration.includes('cost_usd NUMERIC'), 'AI pricing/cost persistence missing');
+assert(engine.includes('public async aiEmbed') && engine.includes('public async rag'), 'Embeddings/RAG engine missing');
+assert(engine.includes('MAX_VECTOR_SCAN_DOCUMENTS = 500'), 'Vector fallback scan must be memory-bounded');
+assert(engine.includes('cleanupRetention') && engine.includes('ANALYTICS_RETENTION_DAYS') && engine.includes('APP_QUALITY_RETENTION_DAYS') && engine.includes('AI_USAGE_RETENTION_DAYS'), 'advanced telemetry retention cleanup missing');
+assert(engine.includes("UPDATE search_indexes SET dimensions=$2"), 'search index dimensions must be inferred and locked from first embedded batch');
+const routes=read('server/routes/advancedPlatform.ts');
+assert(routes.includes('/ai/v1/:providerKey/embeddings') && routes.includes('/ai/v1/rag'), 'embedding/RAG data plane endpoints missing');
+const validator=read('scripts/validate-production-env.cjs');assert(validator.includes('validateAiProviderHosts')&&validator.includes('AI_PROVIDER_ALLOWED_HOSTS'),'production validator must constrain AI provider allowlist');
+assert(routes.includes('ApiGateway.gatewayMiddleware'), 'advanced data-plane must use the API gateway');
+assert(routes.includes('/config/v1/evaluate')&&routes.includes('/analytics/v1/events')&&routes.includes('/quality/v1/events'),'advanced data-plane endpoints missing');
+
+assert(engine.includes('function normalizePricing') && engine.includes('Recovered stale sending campaign'), 'AI pricing validation and campaign recovery hardening missing');
+assert(engine.includes("status IN ('queued','draft','failed') RETURNING *"), 'campaign delivery must use an atomic claim');
+assert(routes.includes("subjectId is required for anonymous configuration evaluation") && routes.includes("subjectId is required for anonymous experiment assignment"), 'anonymous rollout/experiments must require a stable subject identifier');
+
+assert(engine.includes('public async analyticsRetention') && routes.includes('/api/advanced/analytics/retention'), 'cohort retention analytics missing');
+assert(engine.includes('Campaign audience segment was not found') && engine.includes('pushAudience.segmentId'), 'messaging campaigns must support named segments across push/email/SMS');
+const messaging=read('server/platform/messagingEngine.ts');assert(messaging.includes('userIds?: string[]')&&messaging.includes('user_id=ANY'), 'push delivery must support resolved segmented user audiences');
+const auth=read('server/middleware/auth.ts');assert(auth.includes('ecosystem|advanced'),'advanced control plane must require project/environment scope');
+const app=read('src/App.tsx');assert(!app.includes('isRealMode ? <Navigate to="/" replace /> : <PlatformExpansion module="experiments" />'),'real experiments must not redirect to home');assert(!app.includes('isRealMode ? <Navigate to="/" replace /> : <PlatformExpansion module="app-quality" />'),'real App Quality must not redirect to home');assert(!app.includes('isRealMode ? <Navigate to="/" replace /> : <PlatformExpansion module="search-ai" />'),'real Search & AI must not redirect to home');
+console.log('Advanced Platform Phase 7 contract: PASS');

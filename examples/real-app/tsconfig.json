@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "baseUrl": ".",
+    "paths": {
+      "@brisabase/sdk": ["../../src/sdk/brisaBaseClient.ts"]
+    },
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["src", "tests", "vite.config.ts"]
+}

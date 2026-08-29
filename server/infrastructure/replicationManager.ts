@@ -1,0 +1,10 @@
+import { randomUUID } from 'node:crypto';
+import { InfrastructureContext, ReplicationRule } from './types';
+
+export class ReplicationManager {
+  private rules = new Map<string, ReplicationRule>();
+  public list(context?: Pick<InfrastructureContext, 'organizationId' | 'projectId' | 'environmentId'>): ReplicationRule[] { return Array.from(this.rules.values()).filter((rule) => !context || (rule.organizationId === context.organizationId && rule.projectId === context.projectId && rule.environmentId === context.environmentId)).map((rule) => structuredClone(rule)); }
+  public configure(context: InfrastructureContext, input: Omit<ReplicationRule, 'id' | 'organizationId' | 'projectId' | 'environmentId' | 'status' | 'lagMs' | 'lastReplicatedAt'> & { id?: string; status?: ReplicationRule['status']; lagMs?: number }): ReplicationRule { if (!input.targetRegions.length || input.targetRegions.includes(input.sourceRegion)) throw new Error('Replication targets must contain a region distinct from the source.'); const rule: ReplicationRule = { id: input.id || `repl_${randomUUID().replace(/-/g, '').slice(0, 18)}`, organizationId: context.organizationId, projectId: context.projectId, environmentId: context.environmentId, resource: input.resource, sourceRegion: input.sourceRegion, targetRegions: [...new Set(input.targetRegions)], mode: input.mode, status: input.status || 'healthy', lagMs: input.lagMs || 0 }; this.rules.set(rule.id, rule); return structuredClone(rule); }
+  public complete(id: string, lagMs = 0): ReplicationRule { const rule = this.rules.get(id); if (!rule) throw new Error('Replication rule not found.'); rule.lagMs = lagMs; rule.status = lagMs > 30_000 ? 'lagging' : 'healthy'; rule.lastReplicatedAt = new Date().toISOString(); this.rules.set(id, rule); return structuredClone(rule); }
+  public setStatus(id: string, status: ReplicationRule['status']): ReplicationRule { const rule = this.rules.get(id); if (!rule) throw new Error('Replication rule not found.'); rule.status = status; this.rules.set(id, rule); return structuredClone(rule); }
+}

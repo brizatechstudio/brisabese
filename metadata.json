@@ -1,0 +1,6 @@
+{
+  "name": "BrisaBase",
+  "description": "Plataforma completa de Backend como Serviço (BaaS) para criação, escalabilidade e gerenciamento de banco de dados, autenticação, storage, APIs e funções.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

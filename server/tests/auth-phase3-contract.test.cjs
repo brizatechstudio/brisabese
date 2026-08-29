@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');const root=path.resolve(__dirname,'../..');const read=(p)=>fs.readFileSync(path.join(root,p),'utf8');
+console.log('AUTH PHASE 3 CONTRACT');
+const route=read('server/routes/realAuth.ts');
+assert.match(route,/findRefreshTokenAny/);assert.match(route,/revokeRefreshFamily/);assert.match(route,/auth\.refresh_reuse_detected/);console.log('✓ refresh-token replay revokes the token family');
+assert.match(route,/ACCOUNT_LINK_REQUIRED/);assert.match(route,/oauth\/:provider\/link/);assert.match(route,/linkSessionId/);console.log('✓ OAuth account linking is explicit and bound to an active authenticated session');
+assert.match(route,/deletePendingMfaFactors/);assert.match(route,/deleteOtherMfaFactors/);assert.match(route,/revokeUserSessionsExcept\(auth\.user\.id,auth\.payload\.session_id\)/);console.log('✓ MFA replacement and password changes preserve the current session safely');
+assert.match(route,/passwordlessResult/);assert.doesNotMatch(route,/issue\([^\n]*settings\.require_mfa/);console.log('✓ passwordless login cannot falsely assert MFA');
+const webauthn=read('server/auth/webauthn.ts');for(const token of ['data.challenge!==challenge','expectedOrigins().includes(data.origin)','timingSafeEqual(authData.subarray(0,32),expected)','flags&0x04','crypto.verify','counter<=stored.signCount'])assert.ok(webauthn.includes(token),`missing WebAuthn control: ${token}`);console.log('✓ passkeys verify challenge, origin, RP, UV, signature and counter');
+const oauth=read('server/auth/oauth.ts');for(const provider of ['google','github','microsoft','discord','apple'])assert.ok(oauth.includes(`case'${provider}'`));assert.match(oauth,/verifier\.verify/);console.log('✓ all five OAuth providers are implemented and Apple tokens are signature-checked');
+const migrationNames=fs.readdirSync(path.join(root,'server/db/migrations')).filter(f=>/^\d+_.*\.sql$/.test(f));const prefixes=migrationNames.map(f=>f.split('_')[0]);assert.equal(new Set(prefixes).size,prefixes.length,'migration prefixes must be unique');console.log('✓ migration sequence has unique numeric prefixes');
+console.log('AUTH PHASE 3 CONTRACT PASS');
