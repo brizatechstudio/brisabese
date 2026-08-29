@@ -106,6 +106,19 @@ Optional bundled edge:
 docker compose --env-file .env.enterprise -f docker-compose.enterprise.yml --profile edge up -d
 ```
 
+## Railway (minimal external services)
+
+Railway is a production deployment mode for one BrisaBase service using Railway PostgreSQL and Redis. It is intentionally separate from the Self-Hosted Compose profile: Railway does not need the bundled PostgreSQL, Redis, MinIO, Caddy, or Functions containers.
+
+1. Add PostgreSQL and Redis services to the same Railway project.
+2. Deploy this repository as the BrisaBase service; `railway.json` selects the repository Dockerfile and `GET /healthz` as the deployment health check.
+3. Import `.env.railway.example` into the BrisaBase service, use Railway reference variables for `DATABASE_URL` and `REDIS_URL`, and generate each `REPLACE_WITH_*` value independently with `npm run secrets:generate`.
+4. Generate a public domain before the first production deployment. `RAILWAY_PUBLIC_DOMAIN` supplies the default HTTPS/WSS/CORS values when explicit URLs are omitted.
+
+The initial Railway template keeps Storage, Functions, SMTP, backups/PITR, Hosting, and persistent observability disabled. The application still requires PostgreSQL, Redis, and the authentication/operations secrets. Enable a module only after its provider and secrets have been configured. For example, storage on Railway requires an external S3-compatible HTTPS endpoint; it does not start MinIO inside the BrisaBase service.
+
+`DATABASE_SSL` and `REDIS_TLS` are explicit in the template because Railway private networking can use non-TLS connections. Set them to `true` when using public/TLS provider URLs.
+
 ## Switching a project between local and remote instances
 
 `brisabase.json` contains the API URL used by the CLI. Named targets preserve several safe origins and switch that URL without moving credentials into the target file.

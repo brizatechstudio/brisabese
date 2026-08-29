@@ -10,6 +10,7 @@ playwright-report/
 .env*
 !.env.example
 !.env.production.example
+!.env.railway.example
 !.env.homologation.example
 !.env.hobby.example
 !.env.enterprise.example

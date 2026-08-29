@@ -1,7 +1,9 @@
 import dotenv from 'dotenv';
-dotenv.config();
+// Railway injects variables directly into process.env. Loading a local .env is
+// optional and must never replace values supplied by the runtime platform.
+dotenv.config({ override: false, quiet: true });
 
-type DeploymentMode = 'managed' | 'self-hosted';
+type DeploymentMode = 'managed' | 'railway' | 'self-hosted';
 
 const testMode = process.env.BRISABASE_TEST_MODE === 'true' || process.argv.some((arg) => /server[\\/]tests[\\/]/.test(arg));
 const nodeEnv = process.env.NODE_ENV || 'development';
@@ -37,8 +39,12 @@ function bool(value: string | undefined, fallback = false): boolean {
 
 function deploymentMode(value: string | undefined): DeploymentMode {
   const mode = value || 'self-hosted';
-  if (mode === 'managed' || mode === 'self-hosted') return mode;
-  throw new Error('[BRISABASE CONFIGURATION ERROR] BRISABASE_DEPLOYMENT_MODE must be managed or self-hosted.');
+  if (mode === 'managed' || mode === 'railway' || mode === 'self-hosted') return mode;
+  throw new Error('[BRISABASE CONFIGURATION ERROR] BRISABASE_DEPLOYMENT_MODE must be managed, railway, or self-hosted.');
+}
+
+function railwayPrivateHostname(hostname: string): boolean {
+  return hostname.endsWith('.railway.internal');
 }
 
 function validPublicUrl(name: string, value: string, schemes: string[]): void {
@@ -58,9 +64,10 @@ function functionExecutorUrl(value: string, mode: DeploymentMode): URL {
     if (url.username || url.password || url.search || url.hash || !url.hostname || (url.pathname && url.pathname !== '/')) throw new Error('invalid');
     if (url.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(url.hostname)) return url;
     if (mode === 'self-hosted' && url.protocol === 'http:' && url.hostname === 'functions-executor') return url;
+    if (mode === 'railway' && url.protocol === 'http:' && railwayPrivateHostname(url.hostname)) return url;
     throw new Error('invalid');
   } catch {
-    throw new Error('[BRISABASE CONFIGURATION ERROR] FUNCTIONS_EXECUTOR_URL must be a public HTTPS origin or http://functions-executor:<port> in self-hosted Compose mode.');
+    throw new Error('[BRISABASE CONFIGURATION ERROR] FUNCTIONS_EXECUTOR_URL must be public HTTPS, the self-hosted executor, or a Railway private service origin.');
   }
 }
 
@@ -126,18 +133,20 @@ function immutableRelease(value: string): boolean {
 
 const mode = deploymentMode(process.env.BRISABASE_DEPLOYMENT_MODE);
 const renderExternalUrl = process.env.RENDER_EXTERNAL_URL || '';
-const appUrl = process.env.APP_URL || renderExternalUrl;
+const railwayExternalUrl = process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}` : '';
+const platformExternalUrl = renderExternalUrl || railwayExternalUrl;
+const appUrl = process.env.APP_URL || platformExternalUrl;
 const apiUrl = process.env.API_URL || appUrl;
 const storagePublicUrl = process.env.STORAGE_PUBLIC_URL || appUrl;
 const realtimePublicUrl = process.env.REALTIME_PUBLIC_URL || (() => {
-  if (!renderExternalUrl) return '';
+  if (!platformExternalUrl) return '';
   try {
-    const url = new URL('/realtime/v1/websocket', renderExternalUrl);
+    const url = new URL('/realtime/v1/websocket', platformExternalUrl);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     return url.toString();
   } catch { return ''; }
 })();
-const corsAllowedOriginsRaw = process.env.CORS_ALLOWED_ORIGINS || renderExternalUrl;
+const corsAllowedOriginsRaw = process.env.CORS_ALLOWED_ORIGINS || platformExternalUrl;
 const corsAllowedOrigins = corsAllowedOriginsRaw.split(',').map((value) => value.trim()).filter(Boolean);
 const databaseUrl = process.env.DATABASE_URL || '';
 const databaseMigrationUrl = process.env.DATABASE_MIGRATION_URL || databaseUrl;
@@ -153,7 +162,7 @@ export const config = {
   nodeEnv,
   production,
   deploymentMode: mode,
-  release: process.env.BRISABASE_RELEASE || process.env.RENDER_GIT_COMMIT || '',
+  release: process.env.BRISABASE_RELEASE || process.env.RENDER_GIT_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || '',
   databaseUrl,
   databaseMigrationUrl,
   redisUrl: process.env.REDIS_URL || '',
@@ -323,11 +332,15 @@ export const config = {
       const callbackOrigin = required('FUNCTIONS_RPC_CALLBACK_ORIGIN', process.env.FUNCTIONS_RPC_CALLBACK_ORIGIN);
       const callback = new URL(callbackOrigin);
       const internalCallback = config.deploymentMode === 'self-hosted' && callback.protocol === 'http:' && callback.hostname === 'brisabase' && callback.pathname === '/';
+      const railwayCallback = config.deploymentMode === 'railway' && callback.protocol === 'http:' && railwayPrivateHostname(callback.hostname) && callback.pathname === '/';
       const publicCallback = callback.protocol === 'https:' && callback.hostname && !['localhost','127.0.0.1'].includes(callback.hostname) && callback.pathname === '/';
-      if (!internalCallback && !publicCallback) throw new Error('[BRISABASE CONFIGURATION ERROR] FUNCTIONS_RPC_CALLBACK_ORIGIN must be a public HTTPS origin or http://brisabase:3000 in self-hosted Compose mode.');
+      if (!internalCallback && !railwayCallback && !publicCallback) throw new Error('[BRISABASE CONFIGURATION ERROR] FUNCTIONS_RPC_CALLBACK_ORIGIN must be public HTTPS, the self-hosted API, or a Railway private service origin.');
       if ([process.env.JWT_SECRET, process.env.AUTH_ENCRYPTION_KEY, process.env.ADMIN_BOOTSTRAP_TOKEN].includes(executorToken)) throw new Error('[BRISABASE CONFIGURATION ERROR] FUNCTIONS_EXECUTOR_TOKEN must be distinct from authentication secrets.');
     }
-    if (!config.observability.enabled) throw new Error('[BRISABASE CONFIGURATION ERROR] OBSERVABILITY_ENABLED must be true in production.');
+    if (config.deploymentMode === 'railway' && config.storage.enabled) {
+      validPublicUrl('S3_ENDPOINT', required('S3_ENDPOINT', process.env.S3_ENDPOINT), ['https:']);
+      if ((config.storage.provider || '').toLowerCase() === 'local') throw new Error('[BRISABASE CONFIGURATION ERROR] STORAGE_PROVIDER=local is forbidden in Railway production.');
+    }
     if (config.backup.enabled) {
       if (!process.env.BACKUP_ENCRYPTION_KEY) throw new Error('[BRISABASE CONFIGURATION ERROR] BACKUP_ENABLED=true requires BACKUP_ENCRYPTION_KEY.');
       if (!config.backup.bucket) throw new Error('[BRISABASE CONFIGURATION ERROR] Backup storage bucket is required.');
@@ -335,10 +348,10 @@ export const config = {
       if (config.backup.pitrEnabled && config.backup.pitrProvider !== 'neon') throw new Error('[BRISABASE CONFIGURATION ERROR] PITR_PROVIDER must be neon when PITR_ENABLED=true in this release.');
       if ([process.env.JWT_SECRET, process.env.AUTH_ENCRYPTION_KEY, process.env.ADMIN_BOOTSTRAP_TOKEN, process.env.FUNCTIONS_EXECUTOR_TOKEN].includes(process.env.BACKUP_ENCRYPTION_KEY)) throw new Error('[BRISABASE CONFIGURATION ERROR] BACKUP_ENCRYPTION_KEY must be distinct from authentication/executor secrets.');
     }
-    if (config.infrastructure.productionTier === 'ha' && config.deploymentMode !== 'managed') throw new Error('[BRISABASE CONFIGURATION ERROR] BRISABASE_PRODUCTION_TIER=ha requires BRISABASE_DEPLOYMENT_MODE=managed; the bundled self-hosted Compose is intentionally single-host.');
+    if (config.infrastructure.productionTier === 'ha' && !['managed', 'railway'].includes(config.deploymentMode)) throw new Error('[BRISABASE CONFIGURATION ERROR] BRISABASE_PRODUCTION_TIER=ha requires BRISABASE_DEPLOYMENT_MODE=managed or railway; the bundled self-hosted Compose is intentionally single-host.');
         if (config.infrastructure.previewEnabled) throw new Error('[BRISABASE CONFIGURATION ERROR] INFRASTRUCTURE_PREVIEW_ENABLED=true is forbidden in production because the embedded infrastructure engine is a simulator.');
     if (config.ecosystem.previewEnabled) throw new Error('[BRISABASE CONFIGURATION ERROR] ECOSYSTEM_PREVIEW_ENABLED=true is forbidden in production because the embedded registry is not a persistent tenant control plane.');
-    if (!immutableRelease(config.release)) throw new Error('[BRISABASE CONFIGURATION ERROR] BRISABASE_RELEASE or RENDER_GIT_COMMIT must be an immutable version or commit identifier.');
+    if (!immutableRelease(config.release)) throw new Error('[BRISABASE CONFIGURATION ERROR] BRISABASE_RELEASE or platform commit metadata must be an immutable version or commit identifier.');
     if (config.observability.alertWebhookEnabled) {
       validPublicUrl('ALERT_WEBHOOK_URL', required('ALERT_WEBHOOK_URL', process.env.ALERT_WEBHOOK_URL), ['https:']); secureSecret('ALERT_WEBHOOK_TOKEN', process.env.ALERT_WEBHOOK_TOKEN);
       if ([process.env.JWT_SECRET, process.env.AUTH_ENCRYPTION_KEY, process.env.ADMIN_BOOTSTRAP_TOKEN].includes(process.env.ALERT_WEBHOOK_TOKEN)) throw new Error('[BRISABASE CONFIGURATION ERROR] ALERT_WEBHOOK_TOKEN must be distinct from authentication secrets.');

@@ -1,5 +1,7 @@
 import { createClient, RedisClientType } from 'redis';
 import { config } from './config';
+import { logger } from './logger';
+import { safeErrorMetadata } from './diagnostics';
 
 class RedisRuntime {
   private client: RedisClientType | null = null;
@@ -14,7 +16,7 @@ class RedisRuntime {
     if (config.testMode && !config.redisUrl) return;
     if (!config.redisUrl) throw new Error('[BRISABASE REDIS ERROR] REDIS_URL is required.');
     const client = createClient({ url: config.redisUrl, ...(config.redis.tls ? { socket: { tls: true } } : {}) });
-    client.on('error', () => undefined);
+    client.on('error', (error) => logger.error('[REDIS] Client error.', safeErrorMetadata(error)));
     await client.connect();
     await client.ping();
     this.client = client;
@@ -59,7 +61,7 @@ class RedisRuntime {
     if (config.testMode && !this.client) return;
     if (!this.subscriber) {
       const client = this.requireClient().duplicate();
-      client.on('error', () => undefined);
+      client.on('error', (error) => logger.error('[REDIS] Subscriber error.', safeErrorMetadata(error)));
       await client.connect();
       this.subscriber = client;
     }

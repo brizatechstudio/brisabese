@@ -25,6 +25,8 @@ type ExecutorEnvelope = {
   logs?: Array<{ level?: string; args?: any[] }>;
 };
 
+const railwayPrivateHostname = (hostname: string) => hostname.endsWith('.railway.internal');
+
 function executorConfig(): { url: string; token: string } | null {
   const url = (process.env.FUNCTIONS_EXECUTOR_URL || '').replace(/\/$/, '');
   const token = process.env.FUNCTIONS_EXECUTOR_TOKEN || '';
@@ -32,9 +34,10 @@ function executorConfig(): { url: string; token: string } | null {
   try {
     const parsed = new URL(url);
     const selfHostedInternal = config.production && config.deploymentMode === 'self-hosted' && parsed.protocol === 'http:' && parsed.hostname === 'functions-executor';
+    const railwayInternal = config.production && config.deploymentMode === 'railway' && parsed.protocol === 'http:' && railwayPrivateHostname(parsed.hostname);
     const publicHttps = parsed.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(parsed.hostname);
     const developmentHttp = !config.production && parsed.protocol === 'http:';
-    if ((!selfHostedInternal && !publicHttps && !developmentHttp) || parsed.username || parsed.password || parsed.search || parsed.hash) return null;
+    if ((!selfHostedInternal && !railwayInternal && !publicHttps && !developmentHttp) || parsed.username || parsed.password || parsed.search || parsed.hash) return null;
     return { url: parsed.toString().replace(/\/$/, ''), token };
   } catch {
     return null;
@@ -47,9 +50,10 @@ function rpcCallbackUrl(sessionId: string): string {
   try {
     const origin = new URL(internalOrigin);
     const internal = config.production && config.deploymentMode === 'self-hosted' && origin.protocol === 'http:' && origin.hostname === 'brisabase';
+    const railwayInternal = config.production && config.deploymentMode === 'railway' && origin.protocol === 'http:' && railwayPrivateHostname(origin.hostname);
     const publicHttps = origin.protocol === 'https:' && !['localhost', '127.0.0.1'].includes(origin.hostname);
     const developmentHttp = !config.production && origin.protocol === 'http:';
-    if ((!internal && !publicHttps && !developmentHttp) || !origin.hostname || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') {
+    if ((!internal && !railwayInternal && !publicHttps && !developmentHttp) || !origin.hostname || origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/') {
       throw new Error('invalid');
     }
     return new URL(`/internal/functions/rpc/${encodeURIComponent(sessionId)}`, origin).toString();

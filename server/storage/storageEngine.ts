@@ -1333,4 +1333,12 @@ export class StorageEngine {
   }
 }
 
-export const storageEngine = StorageEngine.getInstance();
+// Keep the storage adapter lazy. Importing route modules must not configure or
+// announce MinIO/S3 when STORAGE_ENABLED=false in a minimal deployment.
+export const storageEngine: StorageEngine = new Proxy({} as StorageEngine, {
+  get(_target, property) {
+    const instance = StorageEngine.getInstance();
+    const value = Reflect.get(instance, property, instance);
+    return typeof value === 'function' ? value.bind(instance) : value;
+  },
+});

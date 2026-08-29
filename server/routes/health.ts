@@ -64,6 +64,7 @@ observability.health.register('infrastructure', () => config.testMode
   : ({ status: 'degraded' as const, details: { mode: 'migration-required', reason: 'The logical Infrastructure engine is not a Docker cluster control plane and is not reported as real local infrastructure.' } }));
 
 observability.health.register('observability', async () => {
+  if (!config.observability.enabled) return { status: 'healthy' as const, details: { mode: 'disabled', reason: 'OBSERVABILITY_ENABLED=false' } };
   if (config.testMode) return { status: 'healthy' as const, details: { mode: 'test-fixture' } };
   const health = await observability.persistenceHealth();
   return { status: health.status === 'ok' ? 'healthy' as const : 'degraded' as const, details: health.details };

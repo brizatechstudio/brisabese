@@ -82,6 +82,12 @@ npm run deployment -- up enterprise
 
 Os perfis de implantação são independentes dos tiers comerciais Free/Pro/Team/Enterprise. Consulte `docs/DEPLOYMENT_PROFILES.md` e `docs/SECURITY_BASELINE.md`.
 
+### Railway (PostgreSQL + Redis)
+
+Para a primeira publicacao na Railway, crie os servicos PostgreSQL e Redis, conecte este repositorio e importe as variaveis de `.env.railway.example` no servico BrisaBase. Gere valores independentes para os segredos com `npm run secrets:generate`. A configuracao inicial deixa Storage, Functions, backups/PITR, Hosting e observabilidade persistente desativados; eles podem ser ativados depois, com seus respectivos provedores configurados.
+
+O `railway.json` usa o `Dockerfile` do projeto e verifica `GET /healthz`. A aplicacao usa automaticamente `PORT` e `RAILWAY_PUBLIC_DOMAIN` quando disponibilizados pela plataforma.
+
 ## Modos do console
 
 Runtime real por padrão:

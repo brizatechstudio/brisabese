@@ -29,13 +29,24 @@ const selfHosted: NodeJS.ProcessEnv = {
   NODE_IMAGE: `node:22.18.0-bookworm-slim@${digest}`, POSTGRES_IMAGE: `postgres:16.10-alpine@${digest}`, REDIS_IMAGE: `redis:7.4.5-alpine@${digest}`, MINIO_IMAGE: `minio/minio:release@${digest}`, MINIO_MC_IMAGE: `minio/mc:release@${digest}`, CADDY_IMAGE: `caddy:2.10.2-alpine@${digest}`,
 };
 
+const railway: NodeJS.ProcessEnv = {
+  ...managed,
+  BRISABASE_DEPLOYMENT_MODE: 'railway', BRISABASE_RELEASE: '', RENDER_GIT_COMMIT: '', RAILWAY_GIT_COMMIT_SHA: 'a1b2c3d4e5f6a7b8c9d0', RAILWAY_PUBLIC_DOMAIN: 'brisabase-contract.up.railway.app',
+  APP_URL: '', API_URL: '', STORAGE_PUBLIC_URL: '', REALTIME_PUBLIC_URL: '', CORS_ALLOWED_ORIGINS: '',
+  DATABASE_URL: 'postgresql://railway_app:RailwayPostgres_2026_7uK4w9xP@postgres.railway.internal:5432/railway', DATABASE_MIGRATION_URL: '', DATABASE_SSL: 'false',
+  REDIS_URL: 'redis://:RailwayRedis_2026_8cR5n3vL@redis.railway.internal:6379', REDIS_TLS: 'false',
+  STORAGE_ENABLED: 'false', STORAGE_PROVIDER: '', S3_ENDPOINT: '', S3_ACCESS_KEY: '', S3_SECRET_KEY: '', S3_BUCKET: '',
+  SMTP_ENABLED: 'false', FUNCTIONS_ENABLED: 'false', BACKUP_ENABLED: 'false', PITR_ENABLED: 'false', HOSTING_ENABLED: 'false', HOSTING_CUSTOM_DOMAINS_ENABLED: 'false', OBSERVABILITY_ENABLED: 'false', PROMETHEUS_ENABLED: 'false',
+  REALTIME_ENABLED: 'true', REALTIME_LOGICAL_REPLICATION_ENABLED: 'false',
+};
+
 function validate(base: NodeJS.ProcessEnv, overrides: NodeJS.ProcessEnv = {}): { status: number | null; stdout: string; stderr: string } {
   const result = spawnSync(process.execPath, ['scripts/validate-production-env.cjs', '--environment'], { cwd: process.cwd(), env: { ...base, ...overrides }, encoding: 'utf8' });
   return { status: result.status, stdout: String(result.stdout || ''), stderr: String(result.stderr || '') };
 }
 
-function runtime(overrides: NodeJS.ProcessEnv = {}): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', "const { config } = await import('./server/config.ts'); config.assertRealRuntime(); console.log('DATABASE_SSL=' + config.database.ssl);"], { cwd: process.cwd(), env: { ...managed, ...overrides }, encoding: 'utf8' });
+function runtime(base: NodeJS.ProcessEnv = managed, overrides: NodeJS.ProcessEnv = {}): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', "const { config } = await import('./server/config.ts'); config.assertRealRuntime(); console.log('DATABASE_SSL=' + config.database.ssl);"], { cwd: process.cwd(), env: { ...base, ...overrides }, encoding: 'utf8' });
   return { status: result.status, stdout: String(result.stdout || ''), stderr: String(result.stderr || '') };
 }
 
@@ -50,6 +61,13 @@ const selfHostedResult = validate(selfHosted);
 assert.equal(selfHostedResult.status, 0, selfHostedResult.stderr);
 assert.equal(runtime(selfHosted).status, 0, 'Self-hosted runtime rejected the existing Compose-compatible configuration.');
 assert.notEqual(validate(selfHosted, { S3_ACCESS_KEY: selfHosted.MINIO_ROOT_USER, S3_SECRET_KEY: selfHosted.MINIO_ROOT_PASSWORD }).status, 0, 'Bundled MinIO must reject root credentials reused by the application.');
+
+const railwayResult = validate(railway);
+assert.equal(railwayResult.status, 0, `Railway minimal environment rejected: ${railwayResult.stderr}`);
+const railwayRuntime = runtime(railway);
+assert.equal(railwayRuntime.status, 0, `Railway runtime rejected its Postgres/Redis-only environment: ${railwayRuntime.stderr}`);
+assert.match(railwayRuntime.stdout, /DATABASE_SSL=false/, 'Railway private PostgreSQL must respect the explicit DATABASE_SSL=false setting.');
+assert.notEqual(validate({ ...railway, STORAGE_ENABLED: 'true', STORAGE_PROVIDER: 'local', S3_ENDPOINT: 'http://minio:9000', S3_ACCESS_KEY: 'railway-access-key', S3_SECRET_KEY: 'RailwayStorage_2026_7hJ2kL5nP8qR', S3_BUCKET: 'brisabase' }).status, 0, 'Railway must reject local storage when storage is enabled.');
 
 assert.equal(validate({ ...managed, REALTIME_ENABLED: 'false', REALTIME_PUBLIC_URL: '' }).status, 0, 'Disabled realtime must not require REALTIME_PUBLIC_URL.');
 assert.notEqual(validate({ ...managed, REALTIME_ENABLED: 'true', REALTIME_PUBLIC_URL: '' }).status, 0, 'Enabled realtime must require a secure public WebSocket URL.');
@@ -79,12 +97,27 @@ const noLeak = validate(managed, { DATABASE_URL: 'postgresql://neon_owner:DoNotL
 assert.notEqual(noLeak.status, 0, 'An invalid managed database host should not pass validation.');
 assert.doesNotMatch(noLeak.stderr, /DoNotLogThisPassword/, 'Database credentials must never appear in validation output.');
 
+const diagnostic = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', "const { safeErrorMetadata } = await import('./server/diagnostics.ts'); console.log(JSON.stringify(safeErrorMetadata(new Error('Database failed at postgresql://railway:DoNotLogThisPassword_2026_7kLmN@postgres.railway.internal:5432/railway'))));"], { cwd: process.cwd(), encoding: 'utf8' });
+assert.equal(diagnostic.status, 0, diagnostic.stderr);
+assert.doesNotMatch(`${diagnostic.stdout}${diagnostic.stderr}`, /DoNotLogThisPassword/, 'Boot diagnostics must redact credentials from error messages and stacks.');
+
+const lazyStorage = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', "await import('./server/storage/storageEngine.ts'); console.log('storage-module-imported');"], { cwd: process.cwd(), env: railway, encoding: 'utf8' });
+assert.equal(lazyStorage.status, 0, lazyStorage.stderr);
+assert.match(lazyStorage.stdout, /storage-module-imported/, 'Storage module must remain importable when storage is disabled.');
+assert.doesNotMatch(`${lazyStorage.stdout}${lazyStorage.stderr}`, /Storage Engine initialized/, 'Disabled storage must not initialize a MinIO/S3 adapter during module import.');
+
 const healthz = spawnSync(process.execPath, ['--import', 'tsx', '--input-type=module', '--eval', "const express=(await import('express')).default; const { healthRouter }=await import('./server/routes/health.ts'); const app=express(); app.use(healthRouter); const server=app.listen(0,'127.0.0.1',async()=>{const address=server.address(); const response=await fetch('http://127.0.0.1:'+address.port+'/healthz'); console.log(JSON.stringify({status:response.status,body:await response.json()})); server.close();});"], { cwd: process.cwd(), env: { ...managed, BRISABASE_TEST_MODE: 'true' }, encoding: 'utf8' });
 assert.equal(healthz.status, 0, healthz.stderr);
 assert.match(String(healthz.stdout), /"status":200,"body":\{"status":"ok","service":"brisabase"\}/, '/healthz must return a minimal liveness payload.');
 
 const serverSource = readFileSync('server.ts', 'utf8');
-assert.match(serverSource, /app\.listen\(PORT, '0\.0\.0\.0'/, 'The HTTP server must bind all interfaces for Render.');
+assert.match(serverSource, /app\.listen\(port, '0\.0\.0\.0'\)/, 'The HTTP server must bind all interfaces for Railway.');
+assert.match(serverSource, /safeErrorMetadata\(err\)/, 'Boot failures must emit structured, redacted diagnostics.');
+assert.match(serverSource, /HOSTING_DISABLED/, 'Disabled hosting must not activate hosting routes.');
+const railwayTemplate = readFileSync('.env.railway.example', 'utf8');
+assert.match(railwayTemplate, /BRISABASE_DEPLOYMENT_MODE=railway/, 'Railway must have a dedicated deployment template.');
+assert.match(railwayTemplate, /STORAGE_ENABLED=false[\s\S]*FUNCTIONS_ENABLED=false[\s\S]*BACKUP_ENABLED=false/, 'Railway template must disable optional infrastructure for the first deployment.');
+assert.match(railwayTemplate, /DATABASE_URL=\$\{\{Postgres\.DATABASE_URL\}\}/, 'Railway template must reference its PostgreSQL service.');
 const dockerfile = readFileSync('Dockerfile', 'utf8');
 assert.match(dockerfile, /healthz/, 'The generic Docker image liveness check must use /healthz.');
 assert.match(dockerfile, /ARG VITE_DATA_SOURCE=api[\s\S]*ENV VITE_DATA_SOURCE=\$\{VITE_DATA_SOURCE\}/, 'Docker production frontend build must deterministically compile VITE_DATA_SOURCE=api without exposing secrets as build args.');
@@ -129,4 +162,4 @@ assert.doesNotMatch(productionStage, /seed\.cjs|server\/backup\/data/i, 'Final p
 const packageManifest = JSON.parse(readFileSync('package.json', 'utf8'));
 assert.equal(packageManifest.scripts?.['release:validate:docker'], 'node scripts/run-docker-release-gates.cjs', 'Docker release validation must use the cross-platform launcher.');
 
-console.log('Production configuration contract passed: managed Render/Neon and self-hosted Compose requirements remain separately enforced.');
+console.log('Production configuration contract passed: managed Render/Neon, Railway, and self-hosted Compose requirements remain separately enforced.');

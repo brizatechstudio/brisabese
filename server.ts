@@ -1,6 +1,7 @@
 import 'express-async-errors';
 import express from 'express';
 import path from 'path';
+import type { Server } from 'node:http';
 
 import { config } from './server/config';
 import { logger } from './server/logger';
@@ -70,29 +71,77 @@ import { webhookEngine } from './server/webhooks/webhookEngine';
 import { developerRouter } from './server/routes/developer';
 import { advancedDataRouter, advancedManagementRouter } from './server/routes/advancedPlatform';
 import { advancedPlatformEngine } from './server/platform/advancedPlatformEngine';
+import { safeErrorMetadata } from './server/diagnostics';
+
+class BootStepError extends Error {
+  public readonly cause: unknown;
+
+  constructor(public readonly step: string, cause: unknown) {
+    super(`${step} failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'BootStepError';
+    this.cause = cause;
+  }
+}
+
+async function bootStep<T>(step: string, action: () => Promise<T> | T): Promise<T> {
+  logger.info(`[BOOT] ${step}`);
+  try {
+    const result = await action();
+    logger.info(`[BOOT] ${step} complete`);
+    return result;
+  } catch (error) {
+    logger.error(`[BOOT] ${step} failed.`, safeErrorMetadata(error));
+    throw new BootStepError(step, error);
+  }
+}
+
+async function listen(app: express.Express, port: number): Promise<Server> {
+  return new Promise<Server>((resolve, reject) => {
+    const server = app.listen(port, '0.0.0.0');
+    const onError = (error: Error) => {
+      server.off('listening', onListening);
+      reject(error);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve(server);
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+  });
+}
 
 async function startServer() {
-  config.assertRealRuntime();
-  await postgres.initialize();
-  await securityEngine.hydrate();
-  await redisClient.connect();
+  await bootStep('Validating runtime configuration', () => config.assertRealRuntime());
+  await bootStep('Connecting to PostgreSQL and applying migrations', () => postgres.initialize());
+  await bootStep('Hydrating security state', () => securityEngine.hydrate());
+  await bootStep('Connecting to Redis', () => redisClient.connect());
   if (config.storage.enabled) {
-    if (!config.testMode) realStorageEngine.startLifecycleScheduler();
-    const storageHealth = await storageEngine.getHealth();
-    if (storageHealth.status !== 'ok') throw new Error('[BRISABASE STORAGE ERROR] MinIO/S3 is unavailable or bucket configuration is invalid.');
-  }
+    await bootStep('Initializing storage', async () => {
+      if (!config.testMode) realStorageEngine.startLifecycleScheduler();
+      const storageHealth = await storageEngine.getHealth();
+      if (storageHealth.status !== 'ok') throw new Error('[BRISABASE STORAGE ERROR] MinIO/S3 is unavailable or bucket configuration is invalid.');
+    });
+  } else logger.info('[BOOT] Storage disabled by STORAGE_ENABLED=false');
   if (config.smtp.enabled) {
-    const mailHealth = await emailService.healthCheck();
-    if (mailHealth.status !== 'ok') throw new Error('[BRISABASE MAIL ERROR] SMTP service is unavailable.');
-  }
+    await bootStep('Checking SMTP', async () => {
+      const mailHealth = await emailService.healthCheck();
+      if (mailHealth.status !== 'ok') throw new Error('[BRISABASE MAIL ERROR] SMTP service is unavailable.');
+    });
+  } else logger.info('[BOOT] SMTP disabled by SMTP_ENABLED=false');
   if (config.functions.enabled) {
-    if (config.testMode) functionEngine.start();
-    else await persistentFunctionEngine.start();
-  }
-  await observability.start();
-  webhookEngine.start();
-  messagingEngine.start();
-  advancedPlatformEngine.start();
+    await bootStep('Starting Functions runtime', async () => {
+      if (config.testMode) functionEngine.start();
+      else await persistentFunctionEngine.start();
+    });
+  } else logger.info('[BOOT] Functions disabled by FUNCTIONS_ENABLED=false');
+  if (config.observability.enabled) await bootStep('Starting observability', () => observability.start());
+  else logger.info('[BOOT] Observability disabled by OBSERVABILITY_ENABLED=false');
+  await bootStep('Starting background services', () => {
+    webhookEngine.start();
+    messagingEngine.start();
+    advancedPlatformEngine.start();
+  });
   const app = express();
   const PORT = config.port;
 
@@ -107,7 +156,8 @@ async function startServer() {
 
   app.use(healthRouter);
   app.use(publicStatusRouter);
-  app.use(hostingInternalRouter);
+  if (config.hosting.enabled) app.use(hostingInternalRouter);
+  else app.use('/internal/hosting', (_req, res) => res.status(503).json({ error: { code: 'HOSTING_DISABLED', message: 'Hosting is disabled by configuration.' } }));
   app.use(docsRouter);
   app.use(config.testMode ? restApiRouter : realRestApiRouter);
   if (!config.testMode) app.use(graphqlRouter);
@@ -124,7 +174,7 @@ async function startServer() {
     app.use(passwordRecoveryRouter);
     app.use(messagingDataRouter);
     app.use(advancedDataRouter);
-    app.use(hostingPublicRouter);
+    if (config.hosting.enabled) app.use(hostingPublicRouter);
   }
   if (config.enterprise.enabled) { app.use(enterprisePublicRouter); app.use(scimRouter); }
   else app.use(['/enterprise/v1','/scim/v2'], (_req,res)=>res.status(503).json({error:{code:'ENTERPRISE_DISABLED',message:'Enterprise features are disabled by configuration.'}}));
@@ -180,7 +230,8 @@ async function startServer() {
     app.use(graphqlManagementRouter);
     app.use(developerRouter);
     app.use(previewDatabaseRouter);
-    app.use(hostingManagementRouter);
+    if (config.hosting.enabled) app.use(hostingManagementRouter);
+    else app.use(['/api/hosting', '/hosting/v1'], (_req, res) => res.status(503).json({ error: { code: 'HOSTING_DISABLED', message: 'Hosting is disabled by configuration.' } }));
     app.use(messagingManagementRouter);
     app.use(advancedManagementRouter);
     if (config.enterprise.enabled) app.use(enterpriseManagementRouter);
@@ -194,35 +245,43 @@ async function startServer() {
   app.use(billingRouter);
   app.use(errorHandler);
 
-  const server = app.listen(PORT, '0.0.0.0', async () => {
-    logger.info(`🚀 BrisaBase Backend & Foundation running on http://0.0.0.0:${PORT}`);
+  const server = await bootStep('Starting HTTP server', () => listen(app, PORT));
+  server.on('error', (error) => logger.error('[HTTP] Server error.', safeErrorMetadata(error)));
+  try {
+    logger.info('[BOOT] HTTP server listening', { host: '0.0.0.0', port: PORT });
 
-    if (config.realtime.enabled && config.realtime.logicalReplicationEnabled) {
-      const realtime = config.realtime;
-      if (!config.databaseUrl || !realtime.logicalReplicationSlot || !realtime.logicalReplicationPublication
-        || !realtime.cdcOrganizationId || !realtime.cdcProjectId || !realtime.cdcEnvironmentId) {
-        logger.warn('Logical replication is enabled but its slot, publication, or project scope is incomplete; falling back to Database Engine capture.');
-      } else {
-        postgresCdc.setChangeSource(new PostgresLogicalReplicationSource({
-          connectionString: config.databaseUrl,
-          slotName: realtime.logicalReplicationSlot,
-          publicationName: realtime.logicalReplicationPublication,
-          organizationId: realtime.cdcOrganizationId,
-          projectId: realtime.cdcProjectId,
-          environmentId: realtime.cdcEnvironmentId,
-        }));
+  if (config.realtime.enabled) {
+    await bootStep('Starting Realtime', async () => {
+      if (config.realtime.logicalReplicationEnabled) {
+        const realtime = config.realtime;
+        if (!config.databaseUrl || !realtime.logicalReplicationSlot || !realtime.logicalReplicationPublication
+          || !realtime.cdcOrganizationId || !realtime.cdcProjectId || !realtime.cdcEnvironmentId) {
+          logger.warn('Logical replication is enabled but its slot, publication, or project scope is incomplete; falling back to Database Engine capture.');
+        } else {
+          postgresCdc.setChangeSource(new PostgresLogicalReplicationSource({
+            connectionString: config.databaseUrl,
+            slotName: realtime.logicalReplicationSlot,
+            publicationName: realtime.logicalReplicationPublication,
+            organizationId: realtime.cdcOrganizationId,
+            projectId: realtime.cdcProjectId,
+            environmentId: realtime.cdcEnvironmentId,
+          }));
+        }
       }
-    }
-
-    if (config.realtime.enabled) {
       await realtimeEngine.start();
       await postgresCdc.start();
-    }
-    if (config.backup.enabled) await backupEngine.start();
-    if (config.infrastructure.previewEnabled) infrastructureEngine.start();
-    else await productionInfrastructureEngine.start();
-    if (config.realtime.enabled) realtimeWebSocketServer.attach(server);
-  });
+    });
+  } else logger.info('[BOOT] Realtime disabled by REALTIME_ENABLED=false');
+  if (config.backup.enabled) await bootStep('Starting backup scheduler', () => backupEngine.start());
+  else logger.info('[BOOT] Backups disabled by BACKUP_ENABLED=false');
+  if (config.infrastructure.previewEnabled) await bootStep('Starting infrastructure preview', () => infrastructureEngine.start());
+  else await bootStep('Starting production infrastructure integration', () => productionInfrastructureEngine.start());
+  if (config.realtime.enabled) await bootStep('Attaching Realtime WebSocket server', () => realtimeWebSocketServer.attach(server));
+  } catch (error) {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    throw error;
+  }
+  logger.info('[BOOT] BrisaBase ready', { port: PORT });
 
   const shutdown = async () => {
     logger.info('🛑 Iniciando desligamento gracioso...');
@@ -237,7 +296,7 @@ async function startServer() {
     messagingEngine.stop();
     advancedPlatformEngine.stop();
     webhookEngine.stop();
-    await observability.stop();
+    if (config.observability.enabled) await observability.stop();
     if (config.backup.enabled) backupEngine.stop();
     if (config.infrastructure.previewEnabled) infrastructureEngine.stop();
     else await productionInfrastructureEngine.stop();
@@ -256,6 +315,6 @@ async function startServer() {
 }
 
 startServer().catch((err) => {
-  logger.error('Failed to start BrisaBase server:', { reason: err instanceof Error ? err.message : String(err) });
+  logger.error('[BOOT] BrisaBase server failed to start.', safeErrorMetadata(err));
   process.exitCode = 1;
 });

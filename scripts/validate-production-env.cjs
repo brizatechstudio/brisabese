@@ -33,7 +33,7 @@ const weak = (value, min = 32) => Buffer.byteLength(value || '', 'utf8') < min |
 const isPublicUrl = (value, protocol) => {
   try { const url = new URL(value); return url.protocol === protocol && Boolean(url.hostname) && !url.username && !url.password && !['localhost', '127.0.0.1'].includes(url.hostname); } catch { return false; }
 };
-const release = env.BRISABASE_RELEASE || env.RENDER_GIT_COMMIT || '';
+const release = env.BRISABASE_RELEASE || env.RENDER_GIT_COMMIT || env.RAILWAY_GIT_COMMIT_SHA || '';
 const immutableRelease = (value) => /^(?:v?\d+\.\d+\.\d+(?:[-+][A-Za-z0-9._-]+)?|[A-Fa-f0-9]{7,64}|[A-Za-z0-9][A-Za-z0-9._-]{6,127})$/.test(value) && !/^(?:latest|main|master|dev|local)$/i.test(value);
 const mode = env.BRISABASE_DEPLOYMENT_MODE || 'self-hosted';
 const storageEnabled = bool(env.STORAGE_ENABLED, true);
@@ -47,14 +47,17 @@ const productionTier = env.BRISABASE_PRODUCTION_TIER || 'single-host';
 const alertConfigured = Boolean(env.ALERT_WEBHOOK_URL || env.ALERT_WEBHOOK_TOKEN);
 const alertWebhookEnabled = bool(env.ALERT_WEBHOOK_ENABLED, alertConfigured);
 const renderExternalUrl = env.RENDER_EXTERNAL_URL || '';
-const appUrl = env.APP_URL || renderExternalUrl;
+const railwayExternalUrl = env.RAILWAY_PUBLIC_DOMAIN ? `https://${env.RAILWAY_PUBLIC_DOMAIN}` : '';
+const platformExternalUrl = renderExternalUrl || railwayExternalUrl;
+const appUrl = env.APP_URL || platformExternalUrl;
 const apiUrl = env.API_URL || appUrl;
 const storagePublicUrl = env.STORAGE_PUBLIC_URL || appUrl;
 const realtimePublicUrl = env.REALTIME_PUBLIC_URL || (() => {
-  if (!renderExternalUrl) return '';
-  try { const url = new URL('/realtime/v1/websocket', renderExternalUrl); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; return url.toString(); } catch { return ''; }
+  if (!platformExternalUrl) return '';
+  try { const url = new URL('/realtime/v1/websocket', platformExternalUrl); url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'; return url.toString(); } catch { return ''; }
 })();
-const corsAllowedOrigins = env.CORS_ALLOWED_ORIGINS || renderExternalUrl;
+const corsAllowedOrigins = env.CORS_ALLOWED_ORIGINS || platformExternalUrl;
+const railwayPrivateHostname = (hostname) => hostname.endsWith('.railway.internal');
 
 function postgresConnection(name, value) {
   try {
@@ -103,17 +106,17 @@ function validateCors() {
   }
 }
 
-if (!['managed', 'self-hosted'].includes(mode)) failures.push('BRISABASE_DEPLOYMENT_MODE must be managed or self-hosted');
+if (!['managed', 'railway', 'self-hosted'].includes(mode)) failures.push('BRISABASE_DEPLOYMENT_MODE must be managed, railway, or self-hosted');
 for (const name of ['DATABASE_URL', 'REDIS_URL', 'JWT_SECRET', 'AUTH_ENCRYPTION_KEY', 'ADMIN_BOOTSTRAP_TOKEN']) required(name);
-if (!appUrl) failures.push('APP_URL is required (or RENDER_EXTERNAL_URL on Render)');
-if (!apiUrl) failures.push('API_URL is required (or RENDER_EXTERNAL_URL on Render)');
-if (!corsAllowedOrigins) failures.push('CORS_ALLOWED_ORIGINS is required (or RENDER_EXTERNAL_URL on Render)');
+if (!appUrl) failures.push('APP_URL is required (or a platform public URL)');
+if (!apiUrl) failures.push('API_URL is required (or a platform public URL)');
+if (!corsAllowedOrigins) failures.push('CORS_ALLOWED_ORIGINS is required (or a platform public URL)');
 if (storageEnabled) {
   for (const name of ['S3_ENDPOINT', 'S3_ACCESS_KEY', 'S3_SECRET_KEY', 'S3_BUCKET']) required(name);
-  if (!storagePublicUrl) failures.push('STORAGE_PUBLIC_URL is required (or RENDER_EXTERNAL_URL on Render)');
+  if (!storagePublicUrl) failures.push('STORAGE_PUBLIC_URL is required (or a platform public URL)');
 }
 if (smtpEnabled) for (const name of ['SMTP_HOST', 'SMTP_FROM']) required(name);
-if (realtimeEnabled && !realtimePublicUrl) failures.push('REALTIME_PUBLIC_URL is required (or RENDER_EXTERNAL_URL on Render)');
+if (realtimeEnabled && !realtimePublicUrl) failures.push('REALTIME_PUBLIC_URL is required (or a platform public URL)');
 if (env.NODE_ENV !== 'production') failures.push('NODE_ENV must be production');
 if (env.VITE_DATA_SOURCE !== 'api') failures.push('VITE_DATA_SOURCE must be api');
 if (env.BRISABASE_TEST_RATE_LIMIT || env.BRISABASE_LOAD_SMOKE) failures.push('BRISABASE_TEST_RATE_LIMIT and BRISABASE_LOAD_SMOKE must not be set in production');
@@ -132,17 +135,18 @@ if (functionsEnabled) {
   try {
     const executor = new URL(env.FUNCTIONS_EXECUTOR_URL || '');
     const internal = mode === 'self-hosted' && executor.protocol === 'http:' && executor.hostname === 'functions-executor' && executor.pathname === '/' && !executor.search && !executor.hash;
+    const railwayInternal = mode === 'railway' && executor.protocol === 'http:' && railwayPrivateHostname(executor.hostname) && executor.pathname === '/' && !executor.search && !executor.hash;
     const publicHttps = executor.protocol === 'https:' && Boolean(executor.hostname) && !['localhost','127.0.0.1'].includes(executor.hostname) && executor.pathname === '/' && !executor.search && !executor.hash;
-    if (!internal && !publicHttps) failures.push('FUNCTIONS_EXECUTOR_URL must be public HTTPS or http://functions-executor:<port> in self-hosted mode');
+    if (!internal && !railwayInternal && !publicHttps) failures.push('FUNCTIONS_EXECUTOR_URL must be public HTTPS, a self-hosted executor, or a Railway private service');
   } catch { failures.push('FUNCTIONS_EXECUTOR_URL must be a valid executor origin'); }
   try {
     const callback = new URL(env.FUNCTIONS_RPC_CALLBACK_ORIGIN || '');
     const internal = mode === 'self-hosted' && callback.protocol === 'http:' && callback.hostname === 'brisabase' && callback.pathname === '/' && !callback.search && !callback.hash;
+    const railwayInternal = mode === 'railway' && callback.protocol === 'http:' && railwayPrivateHostname(callback.hostname) && callback.pathname === '/' && !callback.search && !callback.hash;
     const publicHttps = callback.protocol === 'https:' && Boolean(callback.hostname) && !['localhost','127.0.0.1'].includes(callback.hostname) && callback.pathname === '/' && !callback.search && !callback.hash;
-    if (!internal && !publicHttps) failures.push('FUNCTIONS_RPC_CALLBACK_ORIGIN must be public HTTPS or http://brisabase:3000 in self-hosted mode');
+    if (!internal && !railwayInternal && !publicHttps) failures.push('FUNCTIONS_RPC_CALLBACK_ORIGIN must be public HTTPS, the self-hosted API, or a Railway private service');
   } catch { failures.push('FUNCTIONS_RPC_CALLBACK_ORIGIN must be a valid API origin'); }
 }
-if (env.OBSERVABILITY_ENABLED !== 'true') failures.push('OBSERVABILITY_ENABLED must be true in production');
 if (backupEnabled) {
   if (!storageEnabled) failures.push('BACKUP_ENABLED requires STORAGE_ENABLED=true');
   for (const name of ['BACKUP_ENCRYPTION_KEY','BACKUP_STORAGE_BUCKET']) required(name);
@@ -163,10 +167,10 @@ if (customDomainsEnabled) {
   if (weak(env.HOSTING_CADDY_ASK_TOKEN)) failures.push('HOSTING_CADDY_ASK_TOKEN must be at least 32 bytes of non-placeholder random material');
 }
 if (!['single-host','ha'].includes(productionTier)) failures.push('BRISABASE_PRODUCTION_TIER must be single-host or ha');
-if (productionTier === 'ha' && mode !== 'managed') failures.push('BRISABASE_PRODUCTION_TIER=ha requires BRISABASE_DEPLOYMENT_MODE=managed; bundled self-hosted Compose is intentionally single-host');
+if (productionTier === 'ha' && !['managed', 'railway'].includes(mode)) failures.push('BRISABASE_PRODUCTION_TIER=ha requires BRISABASE_DEPLOYMENT_MODE=managed or railway; bundled self-hosted Compose is intentionally single-host');
 if (env.INFRASTRUCTURE_PREVIEW_ENABLED === 'true') failures.push('INFRASTRUCTURE_PREVIEW_ENABLED must remain false in production because the bundled engine is a simulator');
 if (env.ECOSYSTEM_PREVIEW_ENABLED === 'true') failures.push('ECOSYSTEM_PREVIEW_ENABLED must remain false in production because the bundled registry is an in-memory preview');
-if (!immutableRelease(release)) failures.push('BRISABASE_RELEASE or RENDER_GIT_COMMIT must be an immutable version or commit identifier');
+if (!immutableRelease(release)) failures.push('BRISABASE_RELEASE or platform commit metadata must be an immutable version or commit identifier');
 if (!isPublicUrl(appUrl, 'https:')) failures.push('APP_URL must be a public https URL');
 if (!isPublicUrl(apiUrl, 'https:')) failures.push('API_URL must be a public https URL');
 if (storageEnabled && !isPublicUrl(storagePublicUrl, 'https:')) failures.push('STORAGE_PUBLIC_URL must be a public https URL');
@@ -217,6 +221,11 @@ if (mode === 'managed') {
   if (storageEnabled) {
     if (!isPublicUrl(env.S3_ENDPOINT, 'https:')) failures.push('S3_ENDPOINT must be a public https URL in managed mode');
     if ((env.STORAGE_PROVIDER || '').toLowerCase() === 'local') failures.push('STORAGE_PROVIDER=local is forbidden in managed production');
+  }
+} else if (mode === 'railway') {
+  if (storageEnabled) {
+    if (!isPublicUrl(env.S3_ENDPOINT, 'https:')) failures.push('S3_ENDPOINT must be a public https URL in Railway production');
+    if ((env.STORAGE_PROVIDER || '').toLowerCase() === 'local') failures.push('STORAGE_PROVIDER=local is forbidden in Railway production');
   }
 } else if (mode === 'self-hosted') {
   if (!storageEnabled) failures.push('STORAGE_ENABLED must remain true in self-hosted Compose mode');
