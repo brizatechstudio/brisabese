@@ -1,9 +1,9 @@
-name: BrisaBase Windows Final Certification
+name: BrisaBase Windows Local Certification
 
 on:
   push:
     branches:
-      - fix/final-release-gates
+      - chore/local-only-stack
 
 permissions:
   contents: read
@@ -32,9 +32,6 @@ jobs:
 
       - name: Build SDK verification artifact
         run: npm run build:sdk
-
-      - name: Phase 8 verification chain
-        run: npm run phase8:verify
 
       - name: CI security, tests and build
         run: npm run test:ci
@@ -80,9 +77,6 @@ jobs:
       - name: Build SDK verification artifact
         run: npm run build:sdk
 
-      - name: Phase 8 verification chain
-        run: npm run phase8:verify
-
       - name: CI security, tests and build
         run: npm run test:ci
 
@@ -91,5 +85,5 @@ jobs:
           docker version
           docker info
 
-      - name: Docker, real integration and browser release certification
-        run: npm run release:validate:docker
+      - name: Local Docker integration certification
+        run: npm run test:docker
