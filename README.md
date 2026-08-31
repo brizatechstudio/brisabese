@@ -1,200 +1,48 @@
-# BrisaBase 1.0.1-beta.1 — candidato beta das Fases 1–8
+# BrisaBase
 
-BrisaBase é um BaaS baseado em PostgreSQL com console visual e runtime real para Database, Authentication, Storage, Realtime, Webhooks, Functions, REST, GraphQL, Backup, Hosting, infraestrutura operacional, Remote Config, Feature Flags, Experiments, Product Analytics, App Quality, Search/Vector/RAG, AI Gateway, Messaging multicanal, Billing, Enterprise e Infrastructure as Code.
+BrisaBase is a local-first backend platform for application development.
 
-## Advanced Platform — Fase 7
+## Local development
 
-A base **1.0.0** fecha as oito fases de implementação; **1.0.1-beta.1** prepara a certificação e distribuição do beta sem mover a tag anterior. Billing comercial é provider-aware, Enterprise adiciona SSO/SCIM/RBAC/SIEM/políticas e IaC oferece manifests com checksum e drift detection. Recursos externos só são considerados ativos quando seus providers e credenciais reais estão configurados.
+The supported environment at this stage is local development only. The project is designed to run on a developer machine with Docker and Docker Compose.
 
-### Experiments e configuração dinâmica
+### Start the local stack
 
-- Remote Config versionado e condicional.
-- Feature Flags com targeting, segmentos e rollout gradual.
-- A/B tests com atribuição determinística/sticky e métricas de conversão.
-
-### Analytics e App Quality
-
-- Eventos, usuários, sessões e séries diárias.
-- Funnels e retenção D1/D7/D30 por coorte.
-- Crash/error/ANR/performance/trace.
-- Release health e App Distribution ligado ao Storage.
-- Retenção física configurável dos dados avançados.
-
-### Search, Vector, RAG e AI
-
-- Full-text search PostgreSQL com GIN.
-- Embeddings e cosine similarity com limite de memória no fallback.
-- Hybrid search.
-- AI Gateway OpenAI-compatible com chaves criptografadas, HTTPS, allowlist, SSRF protection, token/cost/latency metrics.
-- Embeddings e RAG integrados ao Search.
-
-### Messaging avançado
-
-- Push/FCM, SMTP/e-mail e Twilio/SMS.
-- Templates, campanhas, scheduling e segmentos.
-- Contatos verificados para e-mail/SMS.
-- Claim atômico para impedir campanhas duplicadas em múltiplas instâncias.
-
-## Fases concluídas
-
-- **Fase 1 / 0.3.0** — estabilização e compatibilidade de upgrade.
-- **Fase 2 / 0.4.0** — Database completo.
-- **Fase 3 / 0.5.0** — Authentication & Security.
-- **Fase 4 / 0.6.0** — Storage + Realtime + Webhooks.
-- **Fase 5 / 0.7.0** — Functions + APIs + GraphQL + SDK/CLI/Developer Tools.
-- **Fase 6 / 0.8.0** — Backup/Recovery + Hosting + Produção + Infraestrutura.
-- **Fase 7 / 0.9.0** — Remote Config + Flags + Experiments + Analytics + App Quality + Messaging + Search/Vector/RAG/AI.
-- **Fase 8 / 1.0.0** — Billing + Enterprise + IaC + fechamento operacional/comercial da release 1.0.
-
-## Perfis de implantação
-
-O mesmo BrisaBase pode crescer sem trocar API, SDK ou modelo de dados:
-
-- **Hobby / Local** — stack Docker completa para iniciantes, estudos e protótipos, presa a `127.0.0.1`.
-- **Self-Hosted** — produção `single-host` em VPS/servidor próprio, com TLS, volumes persistentes e serviços empacotados.
-- **Enterprise** — containers do BrisaBase/Functions com PostgreSQL, Redis e S3 externos, TLS obrigatório e topologia preparada para HA.
-
-Começo mais simples:
-
-```bash
-npm ci
-npm run deployment -- init hobby
-npm run deployment -- up hobby
-```
-
-Servidor próprio:
-
-```bash
-npm run deployment -- init self-hosted
-# substitua os placeholders de .env.production
-npm run deployment -- doctor self-hosted
-npm run deployment -- up self-hosted
-```
-
-Infraestrutura corporativa:
-
-```bash
-npm run deployment -- init enterprise
-# configure PostgreSQL/Redis/S3 externos e imagens imutáveis em .env.enterprise
-npm run deployment -- doctor enterprise
-npm run deployment -- up enterprise
-```
-
-Os perfis de implantação são independentes dos tiers comerciais Free/Pro/Team/Enterprise. Consulte `docs/DEPLOYMENT_PROFILES.md` e `docs/SECURITY_BASELINE.md`.
-
-### Railway (PostgreSQL + Redis)
-
-Para a primeira publicacao na Railway, crie os servicos PostgreSQL e Redis, conecte este repositorio e importe as variaveis de `.env.railway.example` no servico BrisaBase. Gere valores independentes para os segredos com `npm run secrets:generate`. A configuracao inicial deixa Storage, Functions, backups/PITR, Hosting e observabilidade persistente desativados; eles podem ser ativados depois, com seus respectivos provedores configurados.
-
-O `railway.json` usa o `Dockerfile` do projeto e verifica `GET /healthz`. A aplicacao usa automaticamente `PORT` e `RAILWAY_PUBLIC_DOMAIN` quando disponibilizados pela plataforma.
-
-## Modos do console
-
-Runtime real por padrão:
-
-```bash
-VITE_DATA_SOURCE=api
-```
-
-Fixtures/previews somente quando explicitamente habilitados:
-
-```bash
-VITE_DATA_SOURCE=mock
-```
-
-## Desenvolvimento local
-
-Requisitos: Node.js 22, npm 10+ e Docker para a stack completa.
-
-```bash
-cp .env.example .env
-npm ci
-npm run db:migrate
-npm run dev
-```
-
-Ou:
-
-```bash
+```powershell
 docker compose -f docker-compose.local.yml up -d --build
-curl http://localhost:3000/health/required
 ```
 
-## Upgrade
+Check services:
 
-```bash
-npm run db:migrate
-npm run db:status
+```powershell
+docker compose -f docker-compose.local.yml ps
 ```
 
-A Fase 7 adiciona `022_advanced_platform_phase7.sql` e a Fase 8 adiciona `023_billing_enterprise_iac_phase8.sql`. A ponte de compatibilidade de releases anteriores continua preservada.
+View BrisaBase logs:
 
-## AI Gateway
-
-Providers são configurados no painel/Control Plane e suas chaves ficam criptografadas no backend. `AI_PROVIDER_ALLOWED_HOSTS` limita explicitamente os destinos permitidos. Nenhum provider é ativado automaticamente.
-
-A retenção de telemetria avançada pode ser configurada por:
-
-```bash
-ANALYTICS_RETENTION_DAYS=90
-APP_QUALITY_RETENTION_DAYS=90
-AI_USAGE_RETENTION_DAYS=90
+```powershell
+docker compose -f docker-compose.local.yml logs --tail=200 brisabase
 ```
 
-Faixa válida em produção: 7–730 dias.
+Stop the stack:
 
-## Produção self-hosted
-
-O contrato da Fase 6 permanece: o Compose distribuído suporta explicitamente `single-host`; HA exige deployment `managed` e infraestrutura externa adequada. Functions continuam no plano de execução privado; Restore/PITR exigem certificação operacional e recovery drill aprovado.
-
-Valide o ambiente escolhido antes de deploy:
-
-```bash
-BRISABASE_ENV_FILE=.env.production npm run production:validate
+```powershell
+docker compose -f docker-compose.local.yml down
 ```
 
-## Validação acumulativa
+## Validation
 
-```bash
-npm run phase1:verify
-npm run phase2:verify
-npm run phase3:verify
-npm run phase4:verify
-npm run phase5:verify
-npm run phase6:verify
-npm run phase7:verify
-npm run phase8:verify
-```
+Before considering a change complete, run:
 
-`phase8:verify` inclui todas as regressões anteriores e o contrato Billing + Enterprise + IaC da release 1.0.
-
-Gates completos no runner final:
-
-```bash
-npm ci
-npm run typecheck
+```powershell
+npm install
+npm run lint
 npm test
 npm run build
-npm run test:browser
-npm run release:validate:docker
 ```
 
-## Relatórios
+The local Docker stack should also start successfully with all required services healthy or completed successfully as one-shot initialization jobs.
 
-- `PHASE1_COMPLETION.md`
-- `PHASE2_COMPLETION.md`
-- `PHASE3_COMPLETION.md`
-- `PHASE4_COMPLETION.md`
-- `PHASE5_COMPLETION.md`
-- `PHASE6_COMPLETION.md`
-- `PHASE7_COMPLETION.md`
-- `PHASE8_COMPLETION.md`
-- `BRISABASE_MIGRATION_STATUS.md`
+## Scope
 
-## Billing, Enterprise e IaC — 1.0
-
-`BILLING_PROVIDER=disabled` mantém instalações self-hosted sem cobrança externa. Quando Stripe é habilitado, checkout/portal/invoices/refunds passam pelo provedor e os webhooks usam assinatura e idempotência. Enterprise oferece domínio verificado, OIDC/SAML Gateway, SCIM, custom roles, IP allowlist, SIEM e evidências técnicas de compliance. IaC exporta manifests com checksum canônico e drift detection.
-
-Antes de lançamento público, revise `docs/legal/TERMS_TEMPLATE.md`, `docs/legal/PRIVACY_TEMPLATE.md` e complete `docs/GO_LIVE_CHECKLIST.md`.
-
-O processo de beta está documentado em `docs/BETA_POLICY.md`, `docs/RELEASE_PROCESS.md`, `docs/REPOSITORY_GOVERNANCE.md` e `SECURITY.md`. O canal de distribuição do candidato é o artefato imutável produzido pelo **BrisaBase Production Gate**; não trate a branch `main` ou um build local como release.
+External deployment providers and hosted-environment templates are intentionally out of scope for the current development phase. Keep the repository focused on the local Docker stack until the local product is fully validated.
