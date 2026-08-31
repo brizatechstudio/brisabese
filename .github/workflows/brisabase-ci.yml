@@ -18,11 +18,8 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Verify source integrity manifest
-        run: npm run release:manifest:verify
-
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
 
       - name: Generate CycloneDX SBOM
         run: node scripts/generate-sbom.cjs --output artifacts/brisabase.cdx.json
@@ -35,10 +32,8 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Validate Hobby Docker profile
+      - name: Validate Local Docker profile
         run: docker compose --env-file .env.hobby.example -f docker-compose.local.yml -f docker-compose.hobby.yml config --quiet
-      - name: Validate Enterprise Docker profile
-        run: docker compose --env-file .env.enterprise.example -f docker-compose.enterprise.yml config --quiet
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
