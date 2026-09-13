@@ -21,6 +21,8 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
     path: input.path || '/api/admin/auth/refresh',
     headers: input.headers || {},
     secure: false,
+    ip: '127.0.0.1',
+    socket: { remoteAddress: '127.0.0.1' },
   } as unknown as Request;
 }
 
