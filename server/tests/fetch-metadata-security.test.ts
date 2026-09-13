@@ -27,7 +27,7 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
 {
   const recorder = responseRecorder();
   let nextCalled = false;
-  corsAndSecurityMiddleware(
+  await corsAndSecurityMiddleware(
     request({ headers: { 'sec-fetch-site': 'cross-site', cookie: 'admin_refresh=present' } }),
     recorder.res,
     (() => { nextCalled = true; }) as NextFunction,
@@ -45,7 +45,7 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
 {
   const recorder = responseRecorder();
   let nextCalled = false;
-  corsAndSecurityMiddleware(
+  await corsAndSecurityMiddleware(
     request({ headers: { 'sec-fetch-site': 'same-origin', cookie: 'admin_refresh=present' } }),
     recorder.res,
     (() => { nextCalled = true; }) as NextFunction,
@@ -57,7 +57,7 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
 {
   const recorder = responseRecorder();
   let nextCalled = false;
-  corsAndSecurityMiddleware(
+  await corsAndSecurityMiddleware(
     request({ headers: {} }),
     recorder.res,
     (() => { nextCalled = true; }) as NextFunction,
@@ -69,7 +69,7 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
 {
   const recorder = responseRecorder();
   let nextCalled = false;
-  corsAndSecurityMiddleware(
+  await corsAndSecurityMiddleware(
     request({ path: '/api/admin/auth/login', headers: { 'sec-fetch-site': 'cross-site' } }),
     recorder.res,
     (() => { nextCalled = true; }) as NextFunction,
