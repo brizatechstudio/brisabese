@@ -154,6 +154,20 @@ try {
   Assert-NativeCommand 'Docker restart persistence'
 
   Write-Host "`n[5/8] Browser against the real control plane"
+  # The browser gate reuses the same disposable Redis instance after the
+  # integration/load gates. Those tests can legitimately consume the strict
+  # admin-auth bucket (10 requests/minute). Clear only disposable admin-auth
+  # rate-limit keys so the browser gate starts with a fresh test identity while
+  # preserving all application data and the production rate-limit policy.
+  Assert-DisposableProject -ProjectName $LocalProject
+  $AdminRateLimitKeys = @(docker @LocalComposeArgs exec -T redis redis-cli --scan --pattern 'brisabase:ratelimit:admin-auth:*')
+  Assert-NativeCommand 'admin-auth rate-limit key scan'
+  foreach ($Key in $AdminRateLimitKeys) {
+    if (-not [string]::IsNullOrWhiteSpace($Key)) {
+      docker @LocalComposeArgs exec -T redis redis-cli DEL $Key | Out-Null
+      Assert-NativeCommand 'admin-auth rate-limit key deletion'
+    }
+  }
   npx playwright install chromium
   Assert-NativeCommand 'Playwright Chromium installation'
   npm run test:browser
