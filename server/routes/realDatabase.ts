@@ -19,7 +19,9 @@ function scope(req: ScopedRequest) {
 function securityContext(req: ScopedRequest): SecurityContext {
   const current = scope(req);
   const role = req.user?.role || 'anonymous';
-  return { ...current, userId: req.user?.id, role, bypassRls: role === 'service' && req.headers['x-brisabase-service-bypass'] === 'true', ip: req.ip, userAgent: req.headers['user-agent'], requestId: req.headers['x-request-id'] as string | undefined };
+  // HTTP requests can never activate the RLS bypass. Service credentials remain
+  // subject to project RLS; bypass contexts are reserved for trusted internal code.
+  return { ...current, userId: req.user?.id, role, bypassRls: false, ip: req.ip, userAgent: req.headers['user-agent'], requestId: req.headers['x-request-id'] as string | undefined };
 }
 
 function canReadManagedRows(req: ScopedRequest): boolean {
@@ -155,7 +157,6 @@ realDatabaseRouter.get('/api/database/triggers', async (req: ScopedRequest, res)
 realDatabaseRouter.post('/api/database/triggers', async (req: ScopedRequest, res) => { try { const created = await realProjectDatabase.createTrigger(scope(req), req.body); await audit(req, 'trigger.created', 'trigger', created?.id); res.status(201).json(created); } catch (error) { fail(res, error); } });
 realDatabaseRouter.patch('/api/database/triggers/:name', async (req: ScopedRequest, res) => { try { const trigger = await databasePhase2Engine.setTriggerEnabled(scope(req), req.params.name, Boolean(req.body?.enabled)); await audit(req, req.body?.enabled ? 'trigger.enabled' : 'trigger.disabled', 'trigger', req.params.name); res.json(trigger); } catch (error) { fail(res, error); } });
 realDatabaseRouter.delete('/api/database/triggers/:name', async (req: ScopedRequest, res) => { try { const deleted = await databasePhase2Engine.deleteTrigger(scope(req), req.params.name, String(req.query.confirm || '')); if (!deleted) { notFound(res, 'Trigger not found.'); return; } await audit(req, 'trigger.deleted', 'trigger', req.params.name); res.json({ success: true }); } catch (error) { fail(res, error); } });
-
 
 realDatabaseRouter.get('/api/database/objects/views', async (req: ScopedRequest, res) => { try { res.json(await databasePhase2Engine.listViews(scope(req))); } catch (error) { fail(res, error, 500); } });
 realDatabaseRouter.post('/api/database/objects/views', async (req: ScopedRequest, res) => { try { const item = await databasePhase2Engine.createView(scope(req), String(req.body?.name || ''), String(req.body?.query || ''), Boolean(req.body?.replace)); await audit(req, 'view.created', 'view', item.name); res.status(201).json(item); } catch (error) { fail(res, error); } });
