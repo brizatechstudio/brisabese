@@ -1,9 +1,52 @@
 import { NextFunction, Request, Response } from 'express';
 import { config } from '../config';
+import { redisClient } from '../redis';
 
 function allowedOrigins(): string[] { return config.corsAllowedOrigins; }
 function unsafe(method: string): boolean { return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase()); }
 function isAllowedOrigin(value: string | undefined): boolean { return Boolean(value && allowedOrigins().includes(value)); }
+
+function rateLimitClass(req: Request): { bucket: string; limit: number; ttl: number } | null {
+  if (req.method === 'OPTIONS') return null;
+  if (/^\/api\/auth\/(login|signup|password-reset\/request|password-reset\/confirm|email-otp|phone-otp|magic-link|mfa\/challenge|oauth)/.test(req.path)) {
+    return { bucket: 'auth', limit: 20, ttl: 60 };
+  }
+  if (/^\/api\/admin\/auth\/(login|signup|password-reset\/request|password-reset\/confirm|mfa\/verify)/.test(req.path)) {
+    return { bucket: 'admin-auth', limit: 10, ttl: 60 };
+  }
+  if (/^(?:\/api|\/rest|\/graphql|\/storage\/v1|\/functions\/v1)(?:\/|$)/.test(req.path)) {
+    return { bucket: 'api', limit: config.rateLimits.apiRequestsPerMinute, ttl: 60 };
+  }
+  return null;
+}
+
+async function enforceRateLimit(req: Request, res: Response): Promise<boolean> {
+  const policy = rateLimitClass(req);
+  if (!policy) return true;
+  const ip = String(req.ip || req.socket.remoteAddress || 'unknown').replace(/[^A-Za-z0-9:._-]/g, '_').slice(0, 100);
+  const key = `ratelimit:${policy.bucket}:${ip}`;
+  try {
+    const count = await redisClient.increment(key, policy.ttl);
+    const remaining = Math.max(0, policy.limit - count);
+    res.setHeader('X-RateLimit-Limit', String(policy.limit));
+    res.setHeader('X-RateLimit-Remaining', String(remaining));
+    res.setHeader('X-RateLimit-Reset', String(Math.ceil(Date.now() / 1000) + policy.ttl));
+    if (count > policy.limit) {
+      res.setHeader('Retry-After', String(policy.ttl));
+      res.status(429).json({ error: { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' } });
+      return false;
+    }
+    return true;
+  } catch {
+    // Redis is a required runtime dependency in production. Never silently
+    // turn a Redis outage into an unbounded public API.
+    if (config.production) {
+      res.status(503).json({ error: { code: 'RATE_LIMIT_UNAVAILABLE', message: 'Request protection is temporarily unavailable.' } });
+      return false;
+    }
+    return true;
+  }
+}
 
 export function applyCors(req: Request, res: Response): boolean {
   const origin = req.headers.origin;
@@ -26,13 +69,11 @@ function rejectCrossSiteCookieWrite(req: Request): boolean {
   if (!unsafe(req.method) || !hasCookie(req)) return false;
   const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
   if (fetchSite === 'cross-site') return true;
-  // Browsers that omit Fetch Metadata still send Origin on CORS/fetch writes.
-  // For cookie-authenticated unsafe requests, reject an explicit foreign Origin.
   const origin = req.headers.origin;
   return Boolean(origin && !isAllowedOrigin(origin));
 }
 
-export function corsAndSecurityMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function corsAndSecurityMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -40,6 +81,7 @@ export function corsAndSecurityMiddleware(req: Request, res: Response, next: Nex
   res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; worker-src 'self' blob:");
   if (config.production && req.secure) res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
 
+  if (!(await enforceRateLimit(req, res))) return;
   if (rejectCrossSiteCookieWrite(req)) {
     res.status(403).json({ error: { code: 'CROSS_SITE_REQUEST_DENIED', message: 'Cross-site cookie-authenticated write is not allowed.' } });
     return;
