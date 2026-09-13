@@ -7,8 +7,10 @@ const argument = (name) => { const index = process.argv.indexOf(name); return in
 const output = path.resolve(argument('--output') || 'brisabase.cdx.json');
 
 try {
-  const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-  const raw = execFileSync(npm, ['sbom', '--sbom-format', 'cyclonedx'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
+  const command = process.platform === 'win32'
+    ? [process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm.cmd sbom --sbom-format cyclonedx']]
+    : ['npm', ['sbom', '--sbom-format', 'cyclonedx']];
+  const raw = execFileSync(command[0], command[1], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
   const document = JSON.parse(raw);
   if (document.bomFormat !== 'CycloneDX' || !Array.isArray(document.components) || !document.components.length) throw new Error('npm returned an empty or invalid CycloneDX document.');
   mkdirSync(path.dirname(output), { recursive: true });
