@@ -28,7 +28,7 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
   const recorder = responseRecorder();
   let nextCalled = false;
   corsAndSecurityMiddleware(
-    request({ headers: { 'sec-fetch-site': 'cross-site' } }),
+    request({ headers: { 'sec-fetch-site': 'cross-site', cookie: 'admin_refresh=present' } }),
     recorder.res,
     (() => { nextCalled = true; }) as NextFunction,
   );
@@ -37,7 +37,7 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
   assert.deepEqual(recorder.body(), {
     error: {
       code: 'CROSS_SITE_REQUEST_DENIED',
-      message: 'Cross-site administrative refresh is not allowed.',
+      message: 'Cross-site cookie-authenticated write is not allowed.',
     },
   });
 }
@@ -46,7 +46,7 @@ function request(input: { method?: string; path?: string; headers?: Record<strin
   const recorder = responseRecorder();
   let nextCalled = false;
   corsAndSecurityMiddleware(
-    request({ headers: { 'sec-fetch-site': 'same-origin' } }),
+    request({ headers: { 'sec-fetch-site': 'same-origin', cookie: 'admin_refresh=present' } }),
     recorder.res,
     (() => { nextCalled = true; }) as NextFunction,
   );
