@@ -12,7 +12,12 @@ function rateLimitClass(req: Request): { bucket: string; limit: number; ttl: num
     return { bucket: 'auth', limit: 20, ttl: 60 };
   }
   if (/^\/api\/admin\/auth\/(login|signup|password-reset\/request|password-reset\/confirm|mfa\/verify)/.test(req.path)) {
-    return { bucket: 'admin-auth', limit: 10, ttl: 60 };
+    // The disposable real-stack browser suite runs after integration/load
+    // suites against the same Redis instance. Integration mode is explicitly
+    // test-only and never permitted by the production validator, so keep the
+    // production/admin-auth policy strict while avoiding cross-suite coupling
+    // in the local certification environment.
+    return { bucket: 'admin-auth', limit: config.integrationMode ? 100 : 10, ttl: 60 };
   }
   if (/^(?:\/api|\/rest|\/graphql|\/storage\/v1|\/functions\/v1)(?:\/|$)/.test(req.path)) {
     return { bucket: 'api', limit: config.rateLimits.apiRequestsPerMinute, ttl: 60 };
